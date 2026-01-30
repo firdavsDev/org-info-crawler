@@ -1,0 +1,86 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# virtual envs
+.venv/
+venv/
+env/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# FastAPI / app
+# =========================
+*.log
+logs/
+tmp/
+*.sqlite3
+
+# =========================
+# Scrapy
+# =========================
+crawler/.scrapy/
+crawler/*.json
+crawler/*.jl
+crawler/*.csv
+crawler/*.log
+crawler/httpcache/
+
+# =========================
+# Alembic
+# =========================
+alembic/versions/__pycache__/
+
+# =========================
+# Env / secrets
+# =========================
+.env
+.env.*
+*.env
+
+# NEVER commit secrets
+secrets/
+*.pem
+*.key
+
+# =========================
+# Editors / OS
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# =========================
+# Docker
+# =========================
+docker-data/
+*.tar
+
+# =========================
+# Kafka / local data
+# =========================
+kafka-logs/
+zookeeper-data/
+
+# =========================
+# Misc
+# =========================
+*.tmp
+*.bak
+*.cache

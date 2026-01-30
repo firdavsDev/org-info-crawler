@@ -1,0 +1,13 @@
+# Python dependencies
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pydantic
+passlib[bcrypt]
+scrapy
+selectolax
+redis
+aiokafka
+pydantic-settings

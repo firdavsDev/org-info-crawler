@@ -1,0 +1,62 @@
+services:
+  api:
+    build: .
+    container_name: orginfo_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      kafka:
+        condition: service_healthy
+      db:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/orginfo
+      BASE_URL: http://localhost:8000
+
+  worker:
+    build: .
+    container_name: orginfo_worker
+    command: python -m worker.worker
+    depends_on:
+      kafka:
+        condition: service_healthy
+      db:
+        condition: service_started
+    volumes:
+      - .:/app
+
+  db:
+    image: postgres:16
+    container_name: orginfo_db
+    environment:
+      POSTGRES_DB: orginfo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+  zookeeper:
+    container_name: orginfo_zookeeper
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: orginfo_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "bash", "-c", "nc -z localhost 9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

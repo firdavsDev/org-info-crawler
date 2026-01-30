@@ -1,0 +1,74 @@
+# =========================
+# Git
+# =========================
+.git
+.gitignore
+
+# =========================
+# Python junk
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# =========================
+# Virtualenvs (NEVER copy into image)
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Tests (optional)
+# =========================
+tests/
+pytest.ini
+.coverage
+htmlcov/
+
+# =========================
+# Local logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Scrapy runtime files
+# =========================
+crawler/.scrapy/
+crawler/httpcache/
+crawler/*.json
+crawler/*.jl
+crawler/*.csv
+
+# =========================
+# Dev tools
+# =========================
+.vscode/
+.idea/
+.DS_Store
+
+# =========================
+# Docs
+# =========================
+README.md
+docs/
+
+# =========================
+# Env secrets
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+# Docker compose (not needed inside image)
+# =========================
+docker-compose.yml
+
+# =========================
+# Alembic cache
+# =========================
+alembic/versions/__pycache__/
