@@ -85,3 +85,4 @@ zookeeper-data/
 *.tmp
 *.bak
 *.cache
+logs/

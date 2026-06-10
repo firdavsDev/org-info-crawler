@@ -12,13 +12,14 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - ./logs:/app/logs
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/orginfo
       BASE_URL: http://localhost:8000
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       ORGINFO_BASE_SEARCH_URL: https://orginfo.uz/uz/search/organizations/
       CRAWLER_TIMEOUT_SECONDS: 30
-      BASIC_AUTH_AUTO_CREATE: "true"
+      BASIC_AUTH_AUTO_CREATE: "false"
 
   worker:
     build: .
@@ -69,3 +70,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  frontend:
+    build: ./frontend
+    container_name: orginfo_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api

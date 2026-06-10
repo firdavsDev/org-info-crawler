@@ -43,9 +43,11 @@ class OrgRepository:
             await self.db.commit()
 
     async def save_payload(self, tin: str, payload: dict):
+        from datetime import datetime
         obj = await self.get_by_tin(tin)
         if obj:
             obj.payload = payload
+            obj.crawled_at = datetime.utcnow()
             self.db.add(obj)
             await self.db.commit()
             return obj

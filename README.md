@@ -1,282 +1,140 @@
-# 🚀 OrgInfo Scraper Service
+# OrgInfo Scraper Service
 
-FastAPI + Scrapy + Kafka + Postgres
+FastAPI + Scrapy + Kafka + Postgres  
 Distributed, cached, background crawling service.
 
 ---
 
-# 🧠 What you are running
+## What you are running
 
-When you start docker compose, you get:
+When you start Docker Compose, you get:
 
 | Service   | Purpose                         |
 | --------- | ------------------------------- |
 | api       | FastAPI HTTP server             |
 | worker    | Kafka consumer + Scrapy crawler |
-| postgres  | cache DB                        |
-| kafka     | distributed queue               |
-| zookeeper | kafka dependency                |
+| db        | Postgres cache DB (container: `orginfo_db`) |
+| kafka     | Distributed queue               |
+| zookeeper | Kafka dependency                |
 
-Flow:
+**Flow:**
 
 ```
 GET /org/{tin}
    ↓
-cache hit → return
-cache miss → Kafka enqueue
+cache hit → return data
+cache miss (or previous failure) → enqueue to Kafka
    ↓
-worker crawls
+worker crawls orginfo.uz
    ↓
-DB updated
+DB updated → status: ready | failed
 ```
+
+> **Basic Auth auto-create:** `BASIC_AUTH_AUTO_CREATE=true` (the default in `docker-compose.yml`) automatically creates unknown users on first request. For local development only — set to `false` in production.
+
+> **Failed-job retry:** If a crawl fails, the next `GET /org/{tin}` re-queues the job automatically. Intentional retry is simply calling the endpoint again.
 
 ---
 
-# ✅ Step 0 — Project tree (IMPORTANT)
+## Step 1 — Build containers
 
-Your root must look like this:
-
-```
-orginfo_service/
-│
-├── app/
-├── crawler/
-├── worker/
-├── alembic/
-├── docker-compose.yml
-├── Dockerfile
-├── requirements.txt
-```
-
-Run everything **from this folder**.
-
----
-
----
-
-# ✅ Step 1 — Install Docker
-
-If not installed:
-
-Mac/Linux:
-
-```
-docker --version
-docker compose version
-```
-
-If missing → install Docker Desktop.
-
----
-
----
-
-# ✅ Step 2 — Build containers
-
-First time only:
-
-```
+```bash
 docker compose build
 ```
 
 ---
 
----
+## Step 2 — Start services
 
-# ✅ Step 3 — Start services
-
-```
-docker compose up
-```
-
-You should see:
-
-```
-api_1       | Uvicorn running on http://0.0.0.0:8000
-worker_1    | Kafka consumer started
-kafka_1     | started
-postgres_1  | database system ready
-```
-
-If you see this → system is alive.
-
----
-
----
-
-# ✅ Step 4 — Run migrations
-
-Open another terminal:
-
-```
-docker compose exec api alembic upgrade head
-```
-
-Creates tables:
-
-* users
-* organizations
-
----
-
----
-
-# ✅ Step 5 — First request (auto creates user)
-
-### Call API
-
-```
-curl -u admin:123 \
-http://localhost:8000/org/304918546
-```
-
-Response:
-
-```
-{"status":"queued"}
-```
-
-Explanation:
-
-* user auto-created if BASIC_AUTH_AUTO_CREATE=true
-* job sent to Kafka
-* worker crawling
-
----
-
----
-
-# ✅ Step 6 — Wait 2–3 seconds
-
-Then:
-
-```
-curl -u admin:123 \
-http://localhost:8000/org/304918546
-```
-
-Now:
-
-```
-{
-  "status": "ready",
-  "data": {...}
-}
-```
-
-Boom. Cached.
-
----
-
----
-
-# ✅ Step 7 — Check job status
-
-```
-curl -u admin:123 \
-http://localhost:8000/org/304918546/status
-```
-
-Returns:
-
-```
-queued | processing | ready | failed
-```
-
----
-
----
-
-# 🧪 Debugging tips
-
-## Check worker logs
-
-```
-docker compose logs -f worker
-```
-
-You’ll see:
-
-```
-processing 304918546
-saving result
-```
-
----
-
-## Check DB manually
-
-```
-docker compose exec db psql -U postgres -d orginfo
-```
-
-```
-select tin, status from organizations;
-```
-
----
-
-## Restart only API
-
-```
-docker compose restart api
-```
-
----
-
-## Scale workers
-
-```
-docker compose up --scale worker=5
-```
-
-Now 5 parallel crawlers.
-
----
-
----
-
-# 🔥 Dev workflow (fast iteration)
-
-Instead of rebuild every time:
-
-### docker-compose.yml
-
-Add:
-
-```yaml
-volumes:
-  - .:/app
-```
-
-Now code changes auto reflected.
-
-Then:
-
-```
-docker compose restart api worker
-```
-
----
-
-# 🟢 Daily usage
-
-Start:
-
-```
+```bash
 docker compose up -d
 ```
 
-Stop:
+Verify all five services are running:
 
-```
-docker compose down
-```
-
-Rebuild:
-
-```
-docker compose build --no-cache
+```bash
+docker compose ps
 ```
 
 ---
+
+## Step 3 — Run migrations
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+This creates the `users` and `organizations` tables.
+Verify:
+
+```bash
+docker compose exec db psql -U postgres -d orginfo -c "\dt"
+```
+
+---
+
+## Step 4 — Smoke test (full flow)
+
+**Queue a crawl:**
+
+```bash
+curl -u admin:123 http://localhost:8000/org/304918546
+# {"status":"queued"}
+```
+
+**Check status while crawling:**
+
+```bash
+curl -u admin:123 http://localhost:8000/org/304918546/status
+# {"status":"processing"}
+```
+
+**After crawl completes (10–30 s):**
+
+```bash
+curl -u admin:123 http://localhost:8000/org/304918546
+# {"status":"ready","data":{...}}
+```
+
+**Invalid TIN returns 422:**
+
+```bash
+curl -u admin:123 http://localhost:8000/org/INVALID
+# HTTP 422  {"detail":"Invalid TIN: must be 9-14 digits."}
+```
+
+---
+
+## TIN validation
+
+TIN must be **9–14 digits** (`^\d{9,14}$`). Any other input is rejected with `422` before touching the database or Kafka.
+
+---
+
+## Development commands
+
+```bash
+# Tail logs
+docker compose logs -f api worker
+
+# Restart after code change
+docker compose restart api worker
+
+# Run unit tests (inside container)
+docker compose exec api pytest tests/ -v
+
+# Syntax check
+docker compose exec api python -m compileall app crawler worker alembic
+
+# Check DB
+docker compose exec db psql -U postgres -d orginfo -c "select tin, status from organizations;"
+```
+
+---
+
+## Stop / rebuild
+
+```bash
+docker compose down
+docker compose build --no-cache
+```

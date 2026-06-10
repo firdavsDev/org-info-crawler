@@ -12,5 +12,7 @@ selectolax
 redis
 aiokafka
 pydantic-settings
+click
 pytest
 pytest-asyncio
+httpx
