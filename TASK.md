@@ -50,11 +50,11 @@ Known missing structure:
 
 ## Task 2: Configuration and Auth Safety
 
-- [ ] Add settings for `KAFKA_BOOTSTRAP_SERVERS`, `ORGINFO_BASE_SEARCH_URL`, `CRAWLER_TIMEOUT_SECONDS`, and `BASIC_AUTH_AUTO_CREATE`.
-- [ ] Make `basic_auth` honor `BASIC_AUTH_AUTO_CREATE`.
-- [ ] Return `401` for unknown users when auto-create is disabled.
-- [ ] Keep demo auto-create enabled only in local Compose config.
-- [ ] Add password verification tests.
+- [x] Add settings for `KAFKA_BOOTSTRAP_SERVERS`, `ORGINFO_BASE_SEARCH_URL`, `CRAWLER_TIMEOUT_SECONDS`, and `BASIC_AUTH_AUTO_CREATE`.
+- [x] Make `basic_auth` honor `BASIC_AUTH_AUTO_CREATE`.
+- [x] Return `401` for unknown users when auto-create is disabled.
+- [x] Keep demo auto-create enabled only in local Compose config.
+- [x] Add password verification tests.
 
 ## Task 3: API Contracts and Validation
 

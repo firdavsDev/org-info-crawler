@@ -50,6 +50,7 @@ alembic/versions/__pycache__/
 .env
 .env.*
 *.env
+!.env.example
 
 # NEVER commit secrets
 secrets/

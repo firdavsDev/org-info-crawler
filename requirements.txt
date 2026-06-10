@@ -6,8 +6,11 @@ asyncpg
 alembic
 pydantic
 passlib[bcrypt]
+bcrypt<5
 scrapy
 selectolax
 redis
 aiokafka
 pydantic-settings
+pytest
+pytest-asyncio
