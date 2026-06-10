@@ -44,6 +44,8 @@ services:
       CRAWLER_TIMEOUT_SECONDS: 30
       REDIS_URL: redis://redis:6379/0
       WORKER_CONCURRENCY: "4"
+      KAFKA_DLQ_TOPIC: "org_jobs_dlq"
+      WORKER_MAX_RETRIES: "3"
 
   db:
     image: postgres:16

@@ -9,9 +9,6 @@ export default function OrgResult({ data }) {
     <div style={styles.container}>
       <div style={exportStyles.bar}>
         <span style={exportStyles.label}>Export:</span>
-        <button style={exportStyles.btn} onClick={() => exportCSV(entries, data.tin)}>
-          ⬇ CSV
-        </button>
         <button style={exportStyles.btn} onClick={() => exportExcel(entries, data.tin)}>
           ⬇ Excel
         </button>
@@ -46,17 +43,6 @@ function flattenValue(value) {
   return String(value)
 }
 
-function exportCSV(entries, tin) {
-  const rows = [['Field', 'Value'], ...entries.map(([k, v]) => [formatKey(k), flattenValue(v)])]
-  const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `org_${tin || 'export'}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 function exportExcel(entries, tin) {
   const rows = [['Field', 'Value'], ...entries.map(([k, v]) => [formatKey(k), flattenValue(v)])]
