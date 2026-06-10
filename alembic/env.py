@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.core.database import Base
+from app.models import organization, user  # noqa: F401
 
 config = context.config
 
@@ -18,7 +19,8 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
+database_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+config.set_main_option("sqlalchemy.url", database_url)
 
 # -------------------------
 # OFFLINE

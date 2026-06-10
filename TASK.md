@@ -40,13 +40,13 @@ Known missing structure:
 
 ## Task 1: Database Migrations
 
-- [ ] Create `alembic/versions/` directory.
-- [ ] Add an Alembic revision that creates `users` with `id`, `username`, and `password_hash`.
-- [ ] Add `organizations` with `id`, unique `tin`, `status`, and JSON `payload`.
-- [ ] Import `app.models.user` and `app.models.organization` in `alembic/env.py` so metadata is visible.
-- [ ] Run `docker compose up -d db`.
-- [ ] Run `docker compose exec api alembic upgrade head`.
-- [ ] Verify with `docker compose exec db psql -U postgres -d orginfo -c "\\dt"`.
+- [x] Create `alembic/versions/` directory.
+- [x] Add an Alembic revision that creates `users` with `id`, `username`, and `password_hash`.
+- [x] Add `organizations` with `id`, unique `tin`, `status`, and JSON `payload`.
+- [x] Import `app.models.user` and `app.models.organization` in `alembic/env.py` so metadata is visible.
+- [x] Run `docker compose up -d db`.
+- [x] Run `docker compose run --rm api alembic upgrade head`.
+- [x] Verify with `docker compose exec db psql -U postgres -d orginfo -c "\\dt"`.
 
 ## Task 2: Configuration and Auth Safety
 
