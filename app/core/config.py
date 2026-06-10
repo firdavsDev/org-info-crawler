@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
     # Number of crawler jobs the worker processes concurrently
     WORKER_CONCURRENCY: int = 4
+    # How many recent searches to return per user
+    SEARCH_HISTORY_LIMIT: int = 20
+    # Dead-letter queue: topic name and max crawl attempts before DLQ
+    KAFKA_DLQ_TOPIC: str = "org_jobs_dlq"
+    WORKER_MAX_RETRIES: int = 3
 
 
 settings = Settings()

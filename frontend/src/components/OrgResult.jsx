@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx'
+
 export default function OrgResult({ data }) {
   if (!data || typeof data !== 'object') return null
 
@@ -5,6 +7,15 @@ export default function OrgResult({ data }) {
 
   return (
     <div style={styles.container}>
+      <div style={exportStyles.bar}>
+        <span style={exportStyles.label}>Export:</span>
+        <button style={exportStyles.btn} onClick={() => exportCSV(entries, data.tin)}>
+          ⬇ CSV
+        </button>
+        <button style={exportStyles.btn} onClick={() => exportExcel(entries, data.tin)}>
+          ⬇ Excel
+        </button>
+      </div>
       <table style={styles.table} className="org-table">
         <tbody>
           {entries.map(([key, value]) => (
@@ -17,6 +28,43 @@ export default function OrgResult({ data }) {
       </table>
     </div>
   )
+}
+
+/** Flatten a value to a plain string for CSV / Excel cells */
+function flattenValue(value) {
+  if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        typeof item === 'object' && item !== null
+          ? Object.values(item).join(' | ')
+          : String(item)
+      )
+      .join('; ')
+  }
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function exportCSV(entries, tin) {
+  const rows = [['Field', 'Value'], ...entries.map(([k, v]) => [formatKey(k), flattenValue(v)])]
+  const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `org_${tin || 'export'}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportExcel(entries, tin) {
+  const rows = [['Field', 'Value'], ...entries.map(([k, v]) => [formatKey(k), flattenValue(v)])]
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 28 }, { wch: 60 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'OrgInfo')
+  XLSX.writeFile(wb, `org_${tin || 'export'}.xlsx`)
 }
 
 function formatKey(key) {
@@ -76,6 +124,28 @@ function formatValue(value) {
 
   if (typeof value === 'object') return <pre style={{ margin: 0, fontSize: 12 }}>{JSON.stringify(value, null, 2)}</pre>
   return String(value)
+}
+
+const exportStyles = {
+  bar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 16px',
+    borderBottom: '1px solid #f0f0f0',
+    background: '#fafafa',
+  },
+  label: { fontSize: 12, color: '#718096', fontWeight: 600 },
+  btn: {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    border: '1px solid #e2e8f0',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#2d3748',
+    cursor: 'pointer',
+  },
 }
 
 const founderStyles = {

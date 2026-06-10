@@ -61,9 +61,29 @@ export default function DashboardPage() {
   const [crawlStatus, setCrawlStatus] = useState(null)
   const [result, setResult] = useState(null)
   const [queryError, setQueryError] = useState('')
+  const [history, setHistory] = useState([])
   const pollTimer = useRef(null)
 
   const progress = useProgress(crawlStatus)
+
+  async function fetchHistory() {
+    try {
+      const res = await apiFetch('/search/history')
+      if (res.ok) {
+        const data = await res.json()
+        // Deduplicate: keep only the most recent entry per TIN
+        const seen = new Set()
+        const deduped = data.filter((item) => {
+          if (seen.has(item.tin)) return false
+          seen.add(item.tin)
+          return true
+        })
+        setHistory(deduped.slice(0, 10))
+      }
+    } catch {
+      // history is non-critical, silently ignore errors
+    }
+  }
 
   function clearPoll() {
     if (pollTimer.current) {
@@ -104,6 +124,7 @@ export default function DashboardPage() {
         setResult(data)
       }
       setLoading(false)
+      fetchHistory()
     } else if (Date.now() > deadline) {
       clearPoll()
       setCrawlStatus('done')
@@ -125,10 +146,12 @@ export default function DashboardPage() {
         setCrawlStatus('done')
         setResult(data)
         setLoading(false)
+        fetchHistory()
       } else if (data.status === 'failed' || data.status === 'not_found') {
         setCrawlStatus('done')
         setResult(data)
         setLoading(false)
+        fetchHistory()
       } else {
         setCrawlStatus(data.status)
         setResult(data)
@@ -143,6 +166,7 @@ export default function DashboardPage() {
   }, [pollStatus])
 
   useEffect(() => {
+    fetchHistory()
     const tinParam = searchParams.get('tin')
     if (tinParam) {
       setTin(tinParam)
@@ -216,6 +240,25 @@ export default function DashboardPage() {
       </form>
 
       {queryError && <p style={styles.error}>{queryError}</p>}
+
+      {history.length > 0 && (
+        <div style={historyStyles.wrap}>
+          <span style={historyStyles.label}>Recent:</span>
+          {history.map((item) => (
+            <button
+              key={item.tin + item.searched_at}
+              style={historyStyles.chip}
+              onClick={() => {
+                setTin(item.tin)
+                setSearchParams({ tin: item.tin }, { replace: false })
+                runSearch(item.tin)
+              }}
+            >
+              {item.tin}
+            </button>
+          ))}
+        </div>
+      )}
 
       {result && (
         <div style={styles.resultBox}>
@@ -367,4 +410,26 @@ const styles = {
   pollHint: { margin: '6px 0 0', fontSize: 11, color: '#a0aec0' },
   errorMsg: { padding: '16px 20px', color: '#c53030', fontSize: 14, margin: 0 },
   notFound: { padding: '16px 20px', color: '#718096', fontSize: 14, margin: 0 },
+}
+
+const historyStyles = {
+  wrap: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  label: { fontSize: 12, color: '#a0aec0', fontWeight: 600, marginRight: 2 },
+  chip: {
+    padding: '3px 10px',
+    border: '1px solid #e2e8f0',
+    borderRadius: 99,
+    background: '#f7fafc',
+    color: '#2d3748',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontVariantNumeric: 'tabular-nums',
+  },
 }
