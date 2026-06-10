@@ -1,5 +1,8 @@
 BOT_NAME = "orginfo"
 
+SPIDER_MODULES = ["crawler.spiders"]
+NEWSPIDER_MODULE = "crawler.spiders"
+
 ROBOTSTXT_OBEY = True
 
 DOWNLOAD_DELAY = 2

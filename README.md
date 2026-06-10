@@ -138,7 +138,7 @@ Response:
 
 Explanation:
 
-* user auto-created
+* user auto-created if BASIC_AUTH_AUTO_CREATE=true
 * job sent to Kafka
 * worker crawling
 

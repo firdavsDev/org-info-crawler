@@ -50,3 +50,11 @@ class OrgRepository:
             await self.db.commit()
             return obj
         return None
+
+    async def set_failed(self, tin: str, error: str):
+        obj = await self.get_by_tin(tin)
+        if obj:
+            obj.status = JobStatus.failed
+            obj.error = error[:2000]
+            self.db.add(obj)
+            await self.db.commit()

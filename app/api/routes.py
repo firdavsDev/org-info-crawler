@@ -26,4 +26,7 @@ async def status(tin: str, user=Depends(basic_auth)):
         if not obj:
             return {"status": "not_found"}
 
-        return {"status": obj.status}
+        response = {"status": obj.status}
+        if obj.status == "failed" and obj.error:
+            response["error"] = obj.error
+        return response

@@ -1,7 +1,10 @@
 import asyncio
 import json
+import logging
 
 from aiokafka import AIOKafkaConsumer
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 from app.core.database import SessionLocal
 from app.models.organization import JobStatus
@@ -40,8 +43,11 @@ async def worker():
                 payload = await crawler.crawl(tin)
                 await repo.save_payload(tin, payload)
                 await repo.set_status(tin, JobStatus.ready)
-            except Exception:
-                await repo.set_status(tin, JobStatus.failed)
+                logging.info("TIN %s → ready", tin)
+            except Exception as exc:
+                msg = f"{type(exc).__name__}: {exc}"
+                logging.error("TIN %s → failed: %s", tin, msg)
+                await repo.set_failed(tin, msg)
 
 
 asyncio.run(worker())
