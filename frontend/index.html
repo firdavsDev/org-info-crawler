@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OrgInfo Crawler</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f0f2f5;
+        color: #1a1a2e;
+      }
+
+      /* ── Nav ── */
+      .nav-shell {
+        flex-wrap: wrap;
+        height: auto !important;
+        min-height: 60px;
+        padding: 10px 16px !important;
+        gap: 8px;
+      }
+      .nav-left  { flex-wrap: wrap; gap: 12px !important; }
+      .nav-right { gap: 10px !important; }
+
+      /* ── Main content padding ── */
+      @media (max-width: 600px) {
+        .page-main {
+          padding: 16px !important;
+        }
+
+        /* Login card full-width */
+        .login-card {
+          padding: 28px 20px !important;
+          border-radius: 12px !important;
+          margin: 16px !important;
+        }
+
+        /* Dashboard search row stacks */
+        .search-form {
+          flex-direction: column !important;
+          align-items: stretch !important;
+        }
+        .search-input {
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        .search-button {
+          width: 100% !important;
+        }
+
+        /* Result header wraps */
+        .result-header {
+          flex-wrap: wrap !important;
+          gap: 8px !important;
+        }
+        .result-meta {
+          margin-left: 0 !important;
+          width: 100%;
+        }
+
+        /* OrgResult table → stacked on tiny screens */
+        .org-table td {
+          display: block;
+          width: 100% !important;
+        }
+        .org-table .key-cell {
+          background: #f7fafc;
+          border-bottom: none !important;
+          padding-bottom: 2px !important;
+        }
+        .org-table .val-cell {
+          padding-top: 4px !important;
+        }
+
+        /* API Docs header stacks */
+        .docs-header {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+        }
+
+        /* Nav brand: smaller on mobile */
+        .nav-brand { font-size: 14px !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
