@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from app.core.cache import cache
 from app.core.config import settings
 from app.core.kafka import producer
 from app.models.organization import JobStatus
@@ -22,19 +23,28 @@ class OrgService:
         self.repo = repo
 
     async def get_or_fetch(self, tin: str):
+        # 1. Redis fast-path
+        cached = await cache.get(tin)
+        if cached is not None:
+            return {"status": "ready", "data": cached}
 
+        # 2. DB lookup
         obj, created = await self.repo.get_or_create_job(tin)
 
         if obj.status == JobStatus.ready:
             if not _is_expired(obj):
+                # Populate Redis for next time
+                await cache.set(tin, obj.payload)
                 return {"status": "ready", "data": obj.payload}
             # Cache expired – re-queue transparently.
+            await cache.delete(tin)
             await self.repo.set_status(tin, JobStatus.queued)
             await producer.send("org_jobs", {"tin": tin})
             return {"status": "queued"}
 
         # Re-queue a previously failed job so the caller can trigger a retry.
         if obj.status == JobStatus.failed:
+            await cache.delete(tin)
             await self.repo.set_status(tin, JobStatus.queued)
             await producer.send("org_jobs", {"tin": tin})
             return {"status": "queued"}

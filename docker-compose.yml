@@ -8,6 +8,8 @@ services:
         condition: service_healthy
       db:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
       - "8000:8000"
     volumes:
@@ -20,6 +22,7 @@ services:
       ORGINFO_BASE_SEARCH_URL: https://orginfo.uz/uz/search/organizations/
       CRAWLER_TIMEOUT_SECONDS: 30
       BASIC_AUTH_AUTO_CREATE: "false"
+      REDIS_URL: redis://redis:6379/0
 
   worker:
     build: .
@@ -30,6 +33,8 @@ services:
         condition: service_healthy
       db:
         condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
     environment:
@@ -37,6 +42,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       ORGINFO_BASE_SEARCH_URL: https://orginfo.uz/uz/search/organizations/
       CRAWLER_TIMEOUT_SECONDS: 30
+      REDIS_URL: redis://redis:6379/0
+      WORKER_CONCURRENCY: "4"
 
   db:
     image: postgres:16
@@ -45,6 +52,16 @@ services:
       POSTGRES_DB: orginfo
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+
+  redis:
+    image: redis:7-alpine
+    container_name: orginfo_redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   zookeeper:
     container_name: orginfo_zookeeper

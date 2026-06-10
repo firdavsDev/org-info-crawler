@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     CRAWLER_TIMEOUT_SECONDS: int = 30
     # Re-crawl cached records older than this many days (0 = never expire)
     CACHE_TTL_DAYS: int = 30
+    REDIS_URL: str = "redis://redis:6379/0"
+    # Number of crawler jobs the worker processes concurrently
+    WORKER_CONCURRENCY: int = 4
 
 
 settings = Settings()

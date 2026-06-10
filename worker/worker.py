@@ -8,6 +8,7 @@ from aiokafka import AIOKafkaConsumer
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
+from app.core.cache import cache
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.organization import JobStatus
@@ -48,6 +49,8 @@ async def process_message(tin: str, crawler: CrawlerService) -> None:
         async with SessionLocal() as db:
             repo = OrgRepository(db)
             await repo.set_failed(tin, error_msg)
+        # Evict any stale Redis entry so next request re-checks DB
+        await cache.delete(tin)
         return
 
     async with SessionLocal() as db:
@@ -55,12 +58,17 @@ async def process_message(tin: str, crawler: CrawlerService) -> None:
         await repo.save_payload(tin, payload)
         await repo.set_status(tin, JobStatus.ready)
 
-    logger.info("TIN %s → ready", tin)
+    # Populate Redis so the API can serve the result without hitting Postgres
+    await cache.set(tin, payload)
+    logger.info("TIN %s → ready (cached in Redis)", tin)
 
 
 async def worker():
     consumer = await create_consumer()
     crawler = CrawlerService()
+
+    semaphore = asyncio.Semaphore(settings.WORKER_CONCURRENCY)
+    active_tasks: set[asyncio.Task] = set()
 
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
@@ -72,6 +80,10 @@ async def worker():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _shutdown)
 
+    async def _bounded(tin: str) -> None:
+        async with semaphore:
+            await process_message(tin, crawler)
+
     try:
         async for msg in consumer:
             if stop_event.is_set():
@@ -81,11 +93,18 @@ async def worker():
             if not tin:
                 logger.warning("Received message without 'tin': %s", data)
                 continue
-            logger.info("Processing TIN %s", tin)
-            await process_message(tin, crawler)
+            logger.info("Dispatching TIN %s (active=%d)", tin, len(active_tasks))
+            task = asyncio.create_task(_bounded(tin))
+            active_tasks.add(task)
+            task.add_done_callback(active_tasks.discard)
     finally:
+        # Wait for all in-flight jobs to finish before exiting
+        if active_tasks:
+            logger.info("Waiting for %d in-flight tasks to finish…", len(active_tasks))
+            await asyncio.gather(*active_tasks, return_exceptions=True)
         logger.info("Stopping Kafka consumer…")
         await consumer.stop()
+        await cache.close()
         logger.info("Kafka consumer stopped.")
 
 

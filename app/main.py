@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.core.cache import cache
 from app.core.kafka import producer
 from app.core.middleware import RequestContextMiddleware
 
@@ -35,3 +36,4 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await producer.stop()
+    await cache.close()

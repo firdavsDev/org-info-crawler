@@ -13,6 +13,7 @@ redis
 aiokafka
 pydantic-settings
 click
+redis[asyncio]
 pytest
 pytest-asyncio
 httpx
