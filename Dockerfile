@@ -9,10 +9,14 @@ COPY app ./app
 COPY crawler ./crawler
 COPY worker ./worker
 COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Create the log directory and ensure the non-root process can write to it.
 # The container runs as root by default (python:slim), but we create the dir
 # explicitly so a mounted host volume inherits the right path.
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

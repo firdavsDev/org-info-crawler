@@ -27,6 +27,7 @@ services:
   worker:
     build: .
     container_name: orginfo_worker
+    entrypoint: []
     command: python -m worker.worker
     depends_on:
       kafka:
