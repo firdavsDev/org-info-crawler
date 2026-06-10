@@ -212,7 +212,6 @@ All settings are environment variables. Defaults are in `docker-compose.yml` and
 | `ORGINFO_BASE_SEARCH_URL`   | `https://orginfo.uz/uz/search/organizations/` | Crawler target                               |
 | `CRAWLER_TIMEOUT_SECONDS`   | `30`                                         | Per-job crawl timeout                         |
 | `CACHE_TTL_DAYS`            | `30`                                         | Re-crawl records older than N days (0 = never)|
-| `BASIC_AUTH_AUTO_CREATE`    | `false`                                      | Create unknown users on first request (dev only) |
 
 ---
 

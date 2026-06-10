@@ -25,7 +25,6 @@ Known missing structure:
 ## File Map
 
 - Modify `app/core/config.py` for explicit settings.
-- Modify `app/core/security.py` to use `BASIC_AUTH_AUTO_CREATE`.
 - Modify `app/core/kafka.py` for configurable Kafka and visible startup errors.
 - Modify `app/models/organization.py` and `app/models/user.py` only if migrations reveal model gaps.
 - Create `alembic/versions/<revision>_create_users_and_organizations.py`.
@@ -50,8 +49,7 @@ Known missing structure:
 
 ## Task 2: Configuration and Auth Safety
 
-- [x] Add settings for `KAFKA_BOOTSTRAP_SERVERS`, `ORGINFO_BASE_SEARCH_URL`, `CRAWLER_TIMEOUT_SECONDS`, and `BASIC_AUTH_AUTO_CREATE`.
-- [x] Make `basic_auth` honor `BASIC_AUTH_AUTO_CREATE`.
+- [x] Add settings for `KAFKA_BOOTSTRAP_SERVERS`, `ORGINFO_BASE_SEARCH_URL`, `CRAWLER_TIMEOUT_SECONDS`.
 - [x] Return `401` for unknown users when auto-create is disabled.
 - [x] Keep demo auto-create enabled only in local Compose config.
 - [x] Add password verification tests.

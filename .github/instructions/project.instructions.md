@@ -85,6 +85,5 @@ await producer.send("org_jobs", {"tin": tin})
 ## Authentication
 
 - HTTP Basic Auth via `app.core.security.basic_auth` dependency.
-- `BASIC_AUTH_AUTO_CREATE=True` (default): first login auto-creates the user with bcrypt-hashed password.
 - All routes must use `user=Depends(basic_auth)`.
 - Password hashing uses `passlib` with `bcrypt` — do not use any other scheme.

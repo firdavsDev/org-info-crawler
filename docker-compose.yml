@@ -21,7 +21,6 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       ORGINFO_BASE_SEARCH_URL: https://orginfo.uz/uz/search/organizations/
       CRAWLER_TIMEOUT_SECONDS: 30
-      BASIC_AUTH_AUTO_CREATE: "false"
       REDIS_URL: redis://redis:6379/0
 
   worker:

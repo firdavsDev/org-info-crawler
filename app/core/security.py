@@ -3,7 +3,6 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from passlib.context import CryptContext
 from sqlalchemy import select
 
-from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.user import User
 
@@ -50,5 +49,4 @@ async def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
         return await authenticate_credentials(
             db=db,
             credentials=credentials,
-            auto_create=settings.BASIC_AUTH_AUTO_CREATE,
         )

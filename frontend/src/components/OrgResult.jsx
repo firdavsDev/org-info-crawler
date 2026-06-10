@@ -27,7 +27,7 @@ export default function OrgResult({ data }) {
   )
 }
 
-/** Flatten a value to a plain string for CSV / Excel cells */
+/** Flatten a value to a plain string for Excel cells */
 function flattenValue(value) {
   if (value === null || value === undefined) return ''
   if (Array.isArray(value)) {
