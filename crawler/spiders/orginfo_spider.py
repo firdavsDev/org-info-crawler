@@ -37,9 +37,50 @@ class OrgSpider(scrapy.Spider):
             return None
 
         # charter_fund raw looks like "84\u00a0631\u00a0471\u00a0400,00 UZS"
-        # normalise non-breaking spaces so it is usable.
         charter_raw = row_value("Ustav fondi")
         charter_fund = charter_raw.replace("\u00a0", " ") if charter_raw else None
+
+        # ── Contact block (Kontakt ma'lumotlar) ──────────────────────────────
+        # email / phone already parsed via itemprop; address spans may be
+        # inside a <address> tag which the existing text() calls already cover.
+        address_locality = text("[itemprop=addressLocality]")
+        street_address   = text("[itemprop=streetAddress]")
+        if address_locality and street_address:
+            full_address = f"{address_locality}, {street_address}"
+        elif address_locality or street_address:
+            full_address = address_locality or street_address
+        else:
+            full_address = None
+
+        # ── Management block (Boshqaruv ma'lumotlari) ────────────────────────
+        director = None
+        for card in html.css("div.card-body"):
+            h2 = card.css_first("h2.h5")
+            if h2 and "Boshqaruv" in h2.text():
+                # The value column of the "Rahbar" row
+                for row in card.css("div.row"):
+                    label_el = row.css_first("div.col-6.text-body-tertiary span")
+                    if label_el and "Rahbar" in label_el.text():
+                        val_el = row.css_first("div.col-6:last-child span")
+                        if val_el:
+                            director = val_el.text(strip=True)
+                        break
+                break
+
+        # ── Founders block (Ta'sischilar) ─────────────────────────────────────
+        founders = []
+        for card in html.css("div.card-body"):
+            h2 = card.css_first("h2.h5")
+            if h2 and "Ta'sischilar" in h2.text():
+                for row in card.css("div.row.py-2"):
+                    name_el  = row.css_first("a span")
+                    share_el = row.css_first("[itemprop=percentOwnership]")
+                    if name_el:
+                        founders.append({
+                            "name":  name_el.text(strip=True),
+                            "share": share_el.attrs.get("content") if share_el else None,
+                        })
+                break
 
         yield {
             "tin": self.tin,
@@ -55,4 +96,7 @@ class OrgSpider(scrapy.Spider):
             "charter_fund": charter_fund,
             "email": text("a[itemprop=email]"),
             "phone": text("a[itemprop=telephone]"),
+            "address": full_address,
+            "director": director,
+            "founders": founders if founders else None,
         }
