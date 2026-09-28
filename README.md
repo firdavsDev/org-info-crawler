@@ -205,6 +205,17 @@ docker compose exec db psql -U postgres -d orginfo \
 
 All settings are environment variables. Defaults are in `docker-compose.yml` and `app/core/config.py`.
 
+Ports live in the root `.env` (see `.env.example`); `docker compose` and the Vite dev server both read it:
+
+| Variable            | Default | Description                                                         |
+|---------------------|---------|---------------------------------------------------------------------|
+| `API_PORT`          | `8000`  | Host port for the FastAPI server (Swagger UI at `/docs`)            |
+| `FRONTEND_PORT`     | `3000`  | Host port for the Nginx-served web UI                               |
+| `FRONTEND_DEV_PORT` | `5173`  | Port for `npm run dev`; its `/api` proxy targets `API_PORT`         |
+
+After changing `API_PORT` or `FRONTEND_PORT`, run `docker compose up -d --build api frontend`
+(the frontend image bakes `API_PORT` into its Swagger link and curl examples).
+
 | Variable                    | Default                                      | Description                                   |
 |-----------------------------|----------------------------------------------|-----------------------------------------------|
 | `DATABASE_URL`              | `postgresql+asyncpg://postgres:postgres@db:5432/orginfo` | Async Postgres URL           |
