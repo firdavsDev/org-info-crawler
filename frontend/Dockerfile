@@ -1,8 +1,11 @@
 # Stage 1: build
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
+# Host port of the API, used for the Swagger link and curl examples in the UI
+ARG API_PORT=8000
+ENV API_PORT=${API_PORT}
 COPY . .
 RUN npm run build
 

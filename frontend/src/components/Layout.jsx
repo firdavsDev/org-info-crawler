@@ -1,80 +1,115 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { logout, getUsername } from '../api/client.js'
+import { useEffect } from 'react'
+import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 
-export default function Layout() {
-  const navigate = useNavigate()
-  const username = getUsername()
+import { AppSidebar } from '@/components/app-sidebar'
+import { LanguageToggle } from '@/components/language-toggle'
+import { ModeToggle } from '@/components/mode-toggle'
+import { SearchHistoryProvider } from '@/components/SearchHistoryProvider.jsx'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { Kbd } from '@/components/ui/kbd'
+import { Separator } from '@/components/ui/separator'
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useI18n } from '@/lib/i18n'
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
+const TOGGLE_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B'
+
+function readSidebarCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)sidebar_state=(true|false)/)
+  return match ? match[1] === 'true' : true
+}
+
+function CloseMobileSidebarOnNavigate() {
+  const { setOpenMobile } = useSidebar()
+  const location = useLocation()
+  useEffect(() => {
+    setOpenMobile(false)
+  }, [location, setOpenMobile])
+  return null
+}
+
+function PageBreadcrumb() {
+  const { pathname } = useLocation()
+  const [searchParams] = useSearchParams()
+  const { t } = useI18n()
+  const tin = searchParams.get('tin')
+
+  if (pathname.startsWith('/docs') || pathname.startsWith('/organizations')) {
+    return (
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbPage>{t(pathname.startsWith('/docs') ? 'nav.apiDocs' : 'nav.organizations')}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    )
   }
 
   return (
-    <div style={styles.shell}>
-      <nav style={styles.nav} className="nav-shell">
-        <div style={styles.navLeft} className="nav-left">
-          <span style={styles.brand} className="nav-brand">🏢 OrgInfo Crawler</span>
-          <NavLink
-            to="/"
-            end
-            style={({ isActive }) => ({ ...styles.link, ...(isActive ? styles.linkActive : {}) })}
-          >
-            Org Lookup
-          </NavLink>
-          <NavLink
-            to="/docs"
-            style={({ isActive }) => ({ ...styles.link, ...(isActive ? styles.linkActive : {}) })}
-          >
-            API Docs
-          </NavLink>
-        </div>
-        <div style={styles.navRight} className="nav-right">
-          <span style={styles.user}>👤 {username}</span>
-          <button onClick={handleLogout} style={styles.logout}>Logout</button>
-        </div>
-      </nav>
-      <main style={styles.main} className="page-main">
-        <Outlet />
-      </main>
-    </div>
+    <BreadcrumbList>
+      <BreadcrumbItem>
+        {tin ? (
+          <BreadcrumbLink asChild>
+            <Link to="/">{t('nav.orgLookup')}</Link>
+          </BreadcrumbLink>
+        ) : (
+          <BreadcrumbPage>{t('nav.orgLookup')}</BreadcrumbPage>
+        )}
+      </BreadcrumbItem>
+      {tin && (
+        <>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage className="font-mono tabular-nums">{tin}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </>
+      )}
+    </BreadcrumbList>
   )
 }
 
-const styles = {
-  shell: { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  nav: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    background: '#1a1a2e',
-    padding: '0 32px',
-    height: 60,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-  },
-  navLeft: { display: 'flex', alignItems: 'center', gap: 28 },
-  navRight: { display: 'flex', alignItems: 'center', gap: 16 },
-  brand: { color: '#fff', fontWeight: 700, fontSize: 17, letterSpacing: '-0.3px' },
-  link: {
-    color: '#a0aec0',
-    textDecoration: 'none',
-    fontSize: 14,
-    fontWeight: 500,
-    padding: '4px 0',
-    borderBottom: '2px solid transparent',
-    transition: 'color 0.2s',
-  },
-  linkActive: { color: '#fff', borderBottom: '2px solid #4a90d9' },
-  user: { color: '#a0aec0', fontSize: 13 },
-  logout: {
-    background: 'transparent',
-    border: '1px solid #4a5568',
-    color: '#a0aec0',
-    borderRadius: 6,
-    padding: '5px 12px',
-    fontSize: 13,
-    cursor: 'pointer',
-  },
-  main: { flex: 1, padding: '32px', maxWidth: 900, margin: '0 auto', width: '100%' },
+export default function Layout() {
+  const { t } = useI18n()
 
+  return (
+    <SearchHistoryProvider>
+      <SidebarProvider defaultOpen={readSidebarCookie()}>
+        <CloseMobileSidebarOnNavigate />
+        <AppSidebar />
+        <SidebarInset className="min-w-0">
+          <header className="flex h-16 shrink-0 items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 px-4 md:px-6">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SidebarTrigger className="-ml-1" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t('nav.toggleSidebar')} <Kbd>{TOGGLE_SHORTCUT}</Kbd>
+                </TooltipContent>
+              </Tooltip>
+              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+              <Breadcrumb className="min-w-0">
+                <PageBreadcrumb />
+              </Breadcrumb>
+            </div>
+            <div className="ml-auto flex items-center gap-1 px-4 md:px-6">
+              <LanguageToggle />
+              <ModeToggle />
+            </div>
+          </header>
+          <main className="flex flex-1 flex-col px-4 pb-10 md:px-6">
+            <div className="w-full max-w-5xl">
+              <Outlet />
+            </div>
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </SearchHistoryProvider>
+  )
 }

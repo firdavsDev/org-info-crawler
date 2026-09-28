@@ -1,11 +1,12 @@
 import re
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import basic_auth
+from app.models.organization import JobStatus
 from app.models.user import User
 from app.repositories.org_repo import OrgRepository
 from app.repositories.search_log_repo import SearchLogRepository
@@ -83,3 +84,31 @@ async def search_history(user: User = Depends(basic_auth)):
         {"tin": entry.tin, "searched_at": entry.searched_at.isoformat()}
         for entry in logs
     ]
+
+
+@router.get("/orgs")
+async def list_orgs(
+    q: str | None = Query(None, max_length=100, description="Search TIN, name, legal name or director."),
+    status: JobStatus | None = Query(None, description="Filter by crawl status."),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user: User = Depends(basic_auth),
+):
+    """Paginated list of crawled organizations, newest crawl first."""
+    async with SessionLocal() as db:
+        rows, total = await OrgRepository(db).list_orgs(q, status, (page - 1) * page_size, page_size)
+    return {
+        "items": [
+            {
+                "tin": org.tin,
+                "status": org.status.value,
+                "error": org.error,
+                "crawled_at": org.crawled_at.isoformat() if org.crawled_at else None,
+                "data": org.payload or {},
+            }
+            for org in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }

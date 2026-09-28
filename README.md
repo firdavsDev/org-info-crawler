@@ -121,7 +121,7 @@ dashboard automatically after a successful login.
 
 ### API Docs
 
-Click **API Docs** in the top navigation bar to see:
+Click **API Docs** in the sidebar to see (its endpoints are also listed under it for direct jumps):
 
 - All available endpoints with parameter descriptions
 - Example `curl` and JavaScript `fetch` requests

@@ -49,4 +49,5 @@ async def basic_auth(credentials: HTTPBasicCredentials = Depends(security)):
         return await authenticate_credentials(
             db=db,
             credentials=credentials,
+            auto_create=False,
         )

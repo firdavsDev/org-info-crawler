@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.cache import cache
+from app.core.config import settings
 from app.core.kafka import producer
 from app.core.middleware import RequestContextMiddleware
 
@@ -15,7 +16,7 @@ app = FastAPI(title="OrgInfo Crawler API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
+        f"http://localhost:{settings.FRONTEND_PORT}",
         "http://localhost",
         "http://frontend",
     ],

@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './pages/LoginPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import ApiDocsPage from './pages/ApiDocsPage.jsx'
+import OrganizationsPage from './pages/OrganizationsPage.jsx'
 import Layout from './components/Layout.jsx'
+import { Toaster } from './components/ui/sonner.jsx'
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('auth_token')
@@ -23,10 +25,12 @@ export default function App() {
           }
         >
           <Route index element={<DashboardPage />} />
+          <Route path="organizations" element={<OrganizationsPage />} />
           <Route path="docs" element={<ApiDocsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Toaster position="bottom-right" />
     </BrowserRouter>
   )
 }

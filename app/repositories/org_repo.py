@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.organization import JobStatus, Organization
@@ -8,6 +8,31 @@ class OrgRepository:
 
     def __init__(self, db):
         self.db = db
+
+    async def list_orgs(self, q: str | None, status: JobStatus | None, offset: int, limit: int):
+        """Return one page of organizations (newest crawl first) and the total match count."""
+        stmt = select(Organization)
+        if q and q.strip():
+            escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            stmt = stmt.where(
+                or_(
+                    Organization.tin.ilike(pattern, escape="\\"),
+                    Organization.payload["name"].as_string().ilike(pattern, escape="\\"),
+                    Organization.payload["legal_name"].as_string().ilike(pattern, escape="\\"),
+                    Organization.payload["director"].as_string().ilike(pattern, escape="\\"),
+                )
+            )
+        if status:
+            stmt = stmt.where(Organization.status == status)
+
+        total = await self.db.scalar(select(func.count()).select_from(stmt.subquery()))
+        rows = await self.db.execute(
+            stmt.order_by(Organization.crawled_at.desc().nulls_last(), Organization.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return rows.scalars().all(), total
 
     async def get_by_tin(self, tin: str):
         q = await self.db.execute(select(Organization).where(Organization.tin == tin))

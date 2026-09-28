@@ -1,8 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { CircleX, Download, RotateCw, ScanSearch, Search, SearchX } from 'lucide-react'
+
 import { apiFetch } from '../api/client.js'
-import OrgResult from '../components/OrgResult.jsx'
+import OrgResult, { exportExcel } from '../components/OrgResult.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import CrawlProgress from '../components/CrawlProgress.jsx'
+import { useSearchHistory } from '../components/SearchHistoryProvider.jsx'
+import { useI18n } from '@/lib/i18n'
+import { orginfoSearchUrl } from '@/lib/links.js'
+import { cn } from '@/lib/utils'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { Kbd } from '@/components/ui/kbd'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 60000
@@ -10,11 +25,6 @@ const POLL_TIMEOUT_MS = 60000
 const PROGRESS_STAGES = {
   queued:     { ceiling: 20,  speed: 0.8 },
   processing: { ceiling: 88,  speed: 0.4 },
-}
-
-const STAGE_LABELS = {
-  queued: 'Job queued — waiting for worker…',
-  processing: 'Crawling orginfo.uz…',
 }
 
 function useProgress(status) {
@@ -54,36 +64,28 @@ function useProgress(status) {
   return pct
 }
 
+function isTypingTarget(el) {
+  return el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+}
+
 export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tin, setTin] = useState(searchParams.get('tin') || '')
+  const location = useLocation()
+  const tinParam = searchParams.get('tin')
+  const [tin, setTin] = useState(tinParam || '')
+  const [searchedTin, setSearchedTin] = useState('')
   const [loading, setLoading] = useState(false)
   const [crawlStatus, setCrawlStatus] = useState(null)
   const [result, setResult] = useState(null)
-  const [queryError, setQueryError] = useState('')
-  const [history, setHistory] = useState([])
+  const [fromCache, setFromCache] = useState(false)
+  const [queryError, setQueryError] = useState(null)
+  const { history, refresh: refreshHistory } = useSearchHistory()
+  const { t } = useI18n()
   const pollTimer = useRef(null)
+  const lastLocationKey = useRef(null)
+  const inputRef = useRef(null)
 
   const progress = useProgress(crawlStatus)
-
-  async function fetchHistory() {
-    try {
-      const res = await apiFetch('/search/history')
-      if (res.ok) {
-        const data = await res.json()
-        // Deduplicate: keep only the most recent entry per TIN
-        const seen = new Set()
-        const deduped = data.filter((item) => {
-          if (seen.has(item.tin)) return false
-          seen.add(item.tin)
-          return true
-        })
-        setHistory(deduped.slice(0, 10))
-      }
-    } catch {
-      // history is non-critical, silently ignore errors
-    }
-  }
 
   function clearPoll() {
     if (pollTimer.current) {
@@ -98,12 +100,10 @@ export default function DashboardPage() {
 
   async function fetchOrg(tinValue) {
     const res = await apiFetch(`/org/${tinValue}`)
-    if (res.status === 422) {
-      const body = await res.json()
-      throw new Error(body.detail || 'Invalid TIN format.')
-    }
-    if (res.status === 401) throw new Error('Session expired. Please log in again.')
-    if (!res.ok) throw new Error(`Server error: ${res.status}`)
+    // Errors carry a code so the message re-renders in the active language.
+    if (res.status === 422) throw Object.assign(new Error('invalidTin'), { code: 'invalidTin', status: 422 })
+    if (res.status === 401) throw Object.assign(new Error('sessionExpired'), { code: 'sessionExpired', status: 401 })
+    if (!res.ok) throw Object.assign(new Error('server'), { code: 'server', status: res.status })
     return res.json()
   }
 
@@ -124,34 +124,37 @@ export default function DashboardPage() {
         setResult(data)
       }
       setLoading(false)
-      fetchHistory()
+      refreshHistory()
     } else if (Date.now() > deadline) {
       clearPoll()
       setCrawlStatus('done')
-      setResult({ status: 'failed', error: 'Timed out waiting for crawl result.' })
+      setResult({ status: 'failed', errorCode: 'timeout' })
       setLoading(false)
     }
-  }, [])
+  }, [refreshHistory])
 
   const runSearch = useCallback(async (tinValue) => {
     clearPoll()
-    setQueryError('')
+    setQueryError(null)
     setResult(null)
     setCrawlStatus(null)
+    setFromCache(false)
+    setSearchedTin(tinValue)
     setLoading(true)
 
     try {
       const data = await fetchOrg(tinValue)
       if (data.status === 'ready') {
         setCrawlStatus('done')
+        setFromCache(true)
         setResult(data)
         setLoading(false)
-        fetchHistory()
+        refreshHistory()
       } else if (data.status === 'failed' || data.status === 'not_found') {
         setCrawlStatus('done')
         setResult(data)
         setLoading(false)
-        fetchHistory()
+        refreshHistory()
       } else {
         setCrawlStatus(data.status)
         setResult(data)
@@ -159,277 +162,292 @@ export default function DashboardPage() {
         pollTimer.current = setInterval(() => pollStatus(tinValue, deadline), POLL_INTERVAL_MS)
       }
     } catch (err) {
-      setQueryError(err.message)
+      setQueryError({ code: err.code || 'server', status: err.status, message: err.message })
       setCrawlStatus(null)
       setLoading(false)
     }
-  }, [pollStatus])
+  }, [pollStatus, refreshHistory])
 
+  // Every lookup goes through the URL (?tin=), so the sidebar, recent chips,
+  // back/forward, and the search form all share one path.
   useEffect(() => {
-    fetchHistory()
-    const tinParam = searchParams.get('tin')
+    if (lastLocationKey.current === location.key) return
+    lastLocationKey.current = location.key
     if (tinParam) {
       setTin(tinParam)
       runSearch(tinParam)
+    } else {
+      clearPoll()
+      setTin('')
+      setSearchedTin('')
+      setResult(null)
+      setCrawlStatus(null)
+      setFromCache(false)
+      setQueryError(null)
+      setLoading(false)
+      inputRef.current?.focus()
     }
-    return () => clearPoll()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.key, tinParam, runSearch])
 
-  async function handleSubmit(e) {
+  useEffect(() => () => clearPoll(), [])
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
+      e.preventDefault()
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  function lookup(tinValue) {
+    setSearchParams({ tin: tinValue }, { replace: false })
+  }
+
+  function handleSubmit(e) {
     e.preventDefault()
     const trimmed = tin.trim()
     if (!trimmed || trimmed.length < 9) return
-    setSearchParams({ tin: trimmed }, { replace: false })
-    runSearch(trimmed)
+    lookup(trimmed)
   }
 
   const isPolling = loading && crawlStatus && crawlStatus !== 'done'
-  const showBar = crawlStatus !== null
+  const showProgress = crawlStatus !== null && !fromCache
   const tooShort = tin.length > 0 && tin.length < 9
   const atMax    = tin.length === 14
-  const counterColor = tooShort ? '#e53e3e' : atMax ? '#dd6b20' : '#68d391'
+  const isReady = result?.status === 'ready' && result.data
 
   return (
-    <div>
-      <h2 style={styles.heading}>Organization Lookup</h2>
-      <p style={styles.sub}>Enter a Tax Identification Number (TIN / INN) to retrieve organization data.</p>
+    <div className="flex flex-col gap-6 pt-2">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight text-balance">{t('lookup.title')}</h1>
+        <p className="text-sm text-muted-foreground">
+          {t('lookup.subtitle')}
+        </p>
+      </div>
 
-      <form onSubmit={handleSubmit} style={styles.form} className="search-form">
-        <div style={styles.inputWrap}>
-          <div style={styles.inputRow}>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={tin}
-              onChange={handleTinChange}
-              placeholder="e.g. 304918546"
-              className="search-input"
-              style={{
-                ...styles.input,
-                borderColor: tooShort ? '#fc8181' : undefined,
-              }}
-              minLength={9}
-              maxLength={14}
-              required
-            />
-            {tin.length > 0 && (
-              <span style={{ ...styles.charCount, color: counterColor }}>
-                {tin.length}/14
-              </span>
+      <div className="flex flex-col gap-3">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+          <div className="flex w-full flex-col gap-1.5 sm:max-w-xs">
+            <label htmlFor="tin" className="sr-only">{t('lookup.inputLabel')}</label>
+            <InputGroup className="h-10">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                ref={inputRef}
+                id="tin"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                autoFocus={!tinParam}
+                value={tin}
+                onChange={handleTinChange}
+                placeholder={t('lookup.placeholder')}
+                className="font-mono tabular-nums"
+                aria-invalid={tooShort || undefined}
+                aria-describedby={tooShort ? 'tin-error' : undefined}
+                minLength={9}
+                maxLength={14}
+                required
+              />
+              <InputGroupAddon align="inline-end">
+                {tin.length > 0 ? (
+                  <span
+                    className={cn(
+                      'font-mono text-xs tabular-nums',
+                      tooShort ? 'text-destructive' : atMax ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
+                    )}>
+                    {tin.length}/14
+                  </span>
+                ) : (
+                  <Kbd>/</Kbd>
+                )}
+              </InputGroupAddon>
+            </InputGroup>
+            {tooShort && (
+              <p id="tin-error" className="text-xs text-destructive">
+                {t('lookup.tooShort', { count: tin.length })}
+              </p>
             )}
           </div>
-          {tooShort && (
-            <p style={styles.inputError}>
-              Too short — minimum 9 digits ({tin.length} entered)
-            </p>
-          )}
-        </div>
-        <button
-          type="submit"
-          disabled={loading || tin.length < 9}
-          className="search-button"
-          style={{
-            ...styles.button,
-            opacity: loading || tin.length < 9 ? 0.55 : 1,
-            cursor: loading || tin.length < 9 ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? 'Searching…' : 'Search'}
-        </button>
-      </form>
+          <Button type="submit" size="lg" className="h-10" disabled={loading || tin.length < 9}>
+            {loading ? <Spinner /> : null}
+            {loading ? t('lookup.searching') : t('lookup.search')}
+          </Button>
+        </form>
 
-      {queryError && <p style={styles.error}>{queryError}</p>}
+        {history.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">{t('lookup.recent')}</span>
+            {history.map((item) => (
+              <Button
+                key={item.tin + item.searched_at}
+                type="button"
+                variant="outline"
+                size="xs"
+                className={cn(
+                  'rounded-full font-mono tabular-nums',
+                  item.tin === searchedTin && 'border-foreground/30 bg-accent'
+                )}
+                onClick={() => lookup(item.tin)}>
+                {item.tin}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {history.length > 0 && (
-        <div style={historyStyles.wrap}>
-          <span style={historyStyles.label}>Recent:</span>
-          {history.map((item) => (
-            <button
-              key={item.tin + item.searched_at}
-              style={historyStyles.chip}
-              onClick={() => {
-                setTin(item.tin)
-                setSearchParams({ tin: item.tin }, { replace: false })
-                runSearch(item.tin)
-              }}
-            >
-              {item.tin}
-            </button>
-          ))}
-        </div>
+      {queryError && (
+        <Alert variant="destructive">
+          <AlertTitle>{t('lookup.failedTitle')}</AlertTitle>
+          <AlertDescription>
+            <p>{queryError.code ? t(`errors.${queryError.code}`, { status: queryError.status }) : queryError.message}</p>
+            {queryError.status === 401 && (
+              <Button asChild variant="outline" size="sm" className="mt-2 text-foreground">
+                <Link to="/login">{t('lookup.signInAgain')}</Link>
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       {result && (
-        <div style={styles.resultBox}>
-          <div style={styles.resultHeader} className="result-header">
-            <span style={{ fontSize: 13, color: '#4a5568', fontWeight: 600 }}>TIN: {tin.trim()}</span>
-            <StatusBadge status={result.status} />
-            {result._meta && (
-              <span style={styles.meta} className="result-meta">
-                {result._meta.elapsed_ms}ms · req {result._meta.request_id}
-              </span>
-            )}
-          </div>
-
-          {showBar && (
-            <div style={styles.progressWrap}>
-              <div style={styles.progressRow}>
-                <span style={styles.progressLabel}>
-                  {isPolling
-                    ? (STAGE_LABELS[crawlStatus] || 'Processing…')
-                    : result.status === 'ready'
-                      ? '✅ Complete'
-                      : 'Finished'}
-                </span>
-                <span style={styles.progressPct}>{Math.round(progress)}%</span>
-              </div>
-              <div style={styles.barTrack}>
-                <div
-                  style={{
-                    ...styles.barFill,
-                    width: `${progress}%`,
-                    background: result.status === 'failed'
-                      ? '#fc8181'
-                      : progress === 100
-                        ? '#68d391'
-                        : '#4a90d9',
-                  }}
-                />
-              </div>
-              {isPolling && (
-                <p style={styles.pollHint}>Checking every 2 s — this page updates automatically.</p>
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardHeader className="border-b py-5 [.border-b]:pb-5">
+            <CardTitle className="text-lg leading-snug text-balance">
+              {isReady && result.data.name ? result.data.name : (
+                <span className="font-mono tabular-nums">{t('lookup.tin', { tin: searchedTin })}</span>
               )}
+            </CardTitle>
+            <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {isReady && result.data.name && (
+                <span className="font-mono tabular-nums text-foreground/80">{t('lookup.tin', { tin: searchedTin })}</span>
+              )}
+              <StatusBadge status={isPolling ? crawlStatus : result.status} />
+              {fromCache && <span className="text-xs">{t('lookup.cached')}</span>}
+              {result._meta && (
+                <span className="font-mono text-xs tabular-nums">
+                  {result._meta.elapsed_ms} ms · req {result._meta.request_id}
+                </span>
+              )}
+            </CardDescription>
+            {isReady && (
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={() => exportExcel(result.data, t)}>
+                  <Download />
+                  {t('lookup.export')}
+                </Button>
+              </CardAction>
+            )}
+          </CardHeader>
+
+          {showProgress && (
+            <div className="border-b px-6 py-4">
+              <CrawlProgress
+                stage={crawlStatus}
+                outcome={result.status}
+                progress={progress}
+                isPolling={Boolean(isPolling)}
+              />
             </div>
           )}
 
-          {result.status === 'failed' && result.error && (
-            <p style={styles.errorMsg}>{result.error}</p>
-          )}
+          <CardContent className="py-6">
+            {isPolling && <RecordSkeleton />}
 
-          {result.status === 'not_found' && (
-            <p style={styles.notFound}>No organization found for this TIN.</p>
-          )}
+            {result.status === 'failed' && (
+              <div className="flex flex-col items-start gap-4" role="alert">
+                <div className="flex gap-3">
+                  <CircleX className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+                  <div className="flex flex-col gap-1 text-sm">
+                    <p className="font-medium">{t('crawl.failedTitle')}</p>
+                    {result.errorCode && <p className="text-foreground/80">{t(`errors.${result.errorCode}`)}</p>}
+                    {result.error && <p className="text-foreground/80">{result.error}</p>}
+                    <p className="text-muted-foreground">{t('crawl.retryHint')}</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="ml-7" onClick={() => lookup(searchedTin)}>
+                  <RotateCw />
+                  {t('crawl.retry')}
+                </Button>
+              </div>
+            )}
 
-          {result.status === 'ready' && result.data && (
-            <OrgResult data={result.data} />
-          )}
-        </div>
+            {result.status === 'not_found' && (
+              <Empty className="p-6 md:p-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <SearchX />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-base">{t('notFound.title')}</EmptyTitle>
+                  <EmptyDescription>
+                    {t('notFound.check')}{' '}
+                    <a href={orginfoSearchUrl(searchedTin)} target="_blank" rel="noopener noreferrer">
+                      {t('notFound.link')}
+                    </a>
+                    .
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+
+            {isReady && <OrgResult data={result.data} />}
+          </CardContent>
+        </Card>
       )}
+
+      {!result && !queryError && !loading && (
+        <Empty className="border border-dashed">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ScanSearch />
+            </EmptyMedia>
+            <EmptyTitle className="text-base">{t('empty.title')}</EmptyTitle>
+          </EmptyHeader>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {t('empty.shortcutBefore')} <Kbd>/</Kbd> {t('empty.shortcutAfter')}
+          </p>
+        </Empty>
+      )}
+
+      {!result && loading && <LoadingCard tin={searchedTin} />}
     </div>
   )
 }
 
-const styles = {
-  heading: { margin: '0 0 6px', fontSize: 24, fontWeight: 700, color: '#1a1a2e' },
-  sub: { margin: '0 0 24px', color: '#666', fontSize: 14 },
-  form: { display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 20 },
-  inputWrap: { display: 'flex', flexDirection: 'column', gap: 4 },
-  inputRow: { position: 'relative', display: 'flex', alignItems: 'center' },
-  input: {
-    padding: '11px 44px 11px 16px',
-    border: '1.5px solid #e2e8f0',
-    borderRadius: 8,
-    fontSize: 15,
-    outline: 'none',
-    width: 240,
-    maxWidth: '100%',
-    transition: 'border-color 0.2s',
-  },
-  charCount: {
-    position: 'absolute',
-    right: 10,
-    fontSize: 11,
-    fontWeight: 600,
-    fontVariantNumeric: 'tabular-nums',
-    pointerEvents: 'none',
-  },
-  inputError: {
-    margin: 0,
-    fontSize: 12,
-    color: '#e53e3e',
-  },
-  button: {
-    padding: '11px 28px',
-    background: '#0f3460',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    fontSize: 15,
-    fontWeight: 600,
-    transition: 'opacity 0.2s',
-    flexShrink: 0,
-  },
-  error: {
-    color: '#e53e3e',
-    background: '#fff5f5',
-    border: '1px solid #fed7d7',
-    padding: '8px 12px',
-    borderRadius: 6,
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  resultBox: {
-    background: '#fff',
-    borderRadius: 12,
-    border: '1px solid #e2e8f0',
-    overflow: 'hidden',
-  },
-  resultHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '14px 20px',
-    borderBottom: '1px solid #f0f0f0',
-    background: '#fafafa',
-  },
-  meta: { marginLeft: 'auto', fontSize: 11, color: '#a0aec0' },
-  progressWrap: {
-    padding: '14px 20px 12px',
-    borderBottom: '1px solid #f0f0f0',
-  },
-  progressRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 6,
-  },
-  progressLabel: { fontSize: 13, color: '#4a5568', fontWeight: 500 },
-  progressPct: { fontSize: 13, fontWeight: 700, color: '#2d3748', fontVariantNumeric: 'tabular-nums' },
-  barTrack: {
-    height: 8,
-    background: '#edf2f7',
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 99,
-    transition: 'width 0.1s linear, background 0.4s ease',
-  },
-  pollHint: { margin: '6px 0 0', fontSize: 11, color: '#a0aec0' },
-  errorMsg: { padding: '16px 20px', color: '#c53030', fontSize: 14, margin: 0 },
-  notFound: { padding: '16px 20px', color: '#718096', fontSize: 14, margin: 0 },
+function RecordSkeleton() {
+  const widths = ['w-2/3', 'w-1/2', 'w-1/3', 'w-3/5', 'w-2/5']
+  return (
+    <div className="flex flex-col gap-3.5" aria-hidden="true">
+      <Skeleton className="mb-1 h-4 w-28" />
+      {widths.map((w, i) => (
+        <div key={i} className="grid gap-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className={cn('h-4', w)} />
+        </div>
+      ))}
+    </div>
+  )
 }
 
-const historyStyles = {
-  wrap: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  label: { fontSize: 12, color: '#a0aec0', fontWeight: 600, marginRight: 2 },
-  chip: {
-    padding: '3px 10px',
-    border: '1px solid #e2e8f0',
-    borderRadius: 99,
-    background: '#f7fafc',
-    color: '#2d3748',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontVariantNumeric: 'tabular-nums',
-  },
+function LoadingCard({ tin }) {
+  const { t } = useI18n()
+  return (
+    <Card className="gap-0 overflow-hidden py-0" aria-busy="true">
+      <CardHeader className="border-b py-5 [.border-b]:pb-5">
+        <CardTitle className="font-mono text-lg tabular-nums">{t('lookup.tin', { tin })}</CardTitle>
+        <CardDescription className="flex items-center gap-2">
+          <Spinner className="size-3.5" />
+          {t('lookup.contacting')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="py-6">
+        <RecordSkeleton />
+      </CardContent>
+    </Card>
+  )
 }

@@ -72,3 +72,9 @@ docker-compose.yml
 # Alembic cache
 # =========================
 alembic/versions/__pycache__/
+
+# =========================
+# Frontend build artifacts (built in its own image)
+# =========================
+frontend/node_modules/
+frontend/dist/

@@ -86,3 +86,5 @@ zookeeper-data/
 *.bak
 *.cache
 logs/
+.impeccable/
+node_modules/

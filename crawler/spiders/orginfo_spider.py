@@ -1,3 +1,5 @@
+import re
+
 import scrapy
 from selectolax.parser import HTMLParser
 
@@ -20,83 +22,111 @@ class OrgSpider(scrapy.Spider):
         yield response.follow(link, self.parse_detail)
 
     def parse_detail(self, response):
-        html = HTMLParser(response.text)
+        yield parse_org_html(response.text, self.tin, response.url)
 
-        def text(css):
-            el = html.css_first(css)
-            return el.text(strip=True) if el else None
 
-        def row_value(label_text: str):
-            """Return the value-column text from a card-body label/value row."""
-            for row in html.css("div.row.border-bottom, div.row.pt-3"):
+def parse_org_html(html_text: str, tin: str, source_url: str | None = None) -> dict:
+    """Extract an organization record from an orginfo.uz detail page."""
+    html = HTMLParser(html_text)
+
+    def text(css):
+        el = html.css_first(css)
+        return el.text(strip=True) if el else None
+
+    def row_value(label_text: str):
+        """Return the value-column text from a card-body label/value row."""
+        for row in html.css("div.row.border-bottom, div.row.pt-3"):
+            label_el = row.css_first("div.col-6.text-body-tertiary span")
+            if label_el and label_el.text(strip=True) == label_text:
+                value_el = row.css_first("div.col-6:last-child")
+                if value_el:
+                    return " ".join(value_el.text(strip=True).split())
+        return None
+
+    # charter_fund raw looks like "84\u00a0631\u00a0471\u00a0400,00 UZS"
+    charter_raw = row_value("Ustav fondi")
+    charter_fund = charter_raw.replace("\u00a0", " ") if charter_raw else None
+
+    # ── Contact block (Kontakt ma'lumotlar) ──────────────────────────────
+    # email / phone already parsed via itemprop; address spans may be
+    # inside a <address> tag which the existing text() calls already cover.
+    address_locality = text("[itemprop=addressLocality]")
+    street_address   = text("[itemprop=streetAddress]")
+    if address_locality and street_address:
+        full_address = f"{address_locality}, {street_address}"
+    elif address_locality or street_address:
+        full_address = address_locality or street_address
+    else:
+        full_address = None
+
+    # ── Management block (Boshqaruv ma'lumotlari) ────────────────────────
+    director = None
+    director_position = None
+    for card in html.css("div.card-body"):
+        h2 = card.css_first("h2.h5")
+        if h2 and "Boshqaruv" in h2.text():
+            # The value column of the "Rahbar" row
+            for row in card.css("div.row"):
                 label_el = row.css_first("div.col-6.text-body-tertiary span")
-                if label_el and label_el.text(strip=True) == label_text:
-                    value_el = row.css_first("div.col-6:last-child")
-                    if value_el:
-                        return " ".join(value_el.text(strip=True).split())
-            return None
+                if label_el and "Rahbar" in label_el.text():
+                    val_el = row.css_first("div.col-6:last-child span")
+                    if val_el:
+                        director = val_el.text(strip=True)
+                    # The position ("ceo", …) is only exposed as the caret icon's alt text.
+                    pos_el = row.css_first("div.col-6:last-child img[alt]")
+                    if pos_el and pos_el.attrs.get("alt", "").strip():
+                        director_position = pos_el.attrs["alt"].strip()
+                    break
+            break
 
-        # charter_fund raw looks like "84\u00a0631\u00a0471\u00a0400,00 UZS"
-        charter_raw = row_value("Ustav fondi")
-        charter_fund = charter_raw.replace("\u00a0", " ") if charter_raw else None
+    # ── Tax committee block (Soliq qo'mitasi) ────────────────────────────
+    large_taxpayer = None
+    for row in html.css("div.row"):
+        label_el = row.css_first("div.col-6.text-body-tertiary span")
+        if label_el and label_el.text(strip=True) == "Yirik soliq to'lovchi":
+            value_el = row.css_first("div.col-6:last-child")
+            if value_el:
+                large_taxpayer = " ".join(value_el.text(strip=True).split()) or None
+            break
 
-        # ── Contact block (Kontakt ma'lumotlar) ──────────────────────────────
-        # email / phone already parsed via itemprop; address spans may be
-        # inside a <address> tag which the existing text() calls already cover.
-        address_locality = text("[itemprop=addressLocality]")
-        street_address   = text("[itemprop=streetAddress]")
-        if address_locality and street_address:
-            full_address = f"{address_locality}, {street_address}"
-        elif address_locality or street_address:
-            full_address = address_locality or street_address
-        else:
-            full_address = None
+    # ── Note block (Eslatma): "… ma'lumot 02.09.2026 kun uchun aktual." ──
+    as_of_match = re.search(r"(\d{2}\.\d{2}\.\d{4})\s+kun uchun aktual", html.body.text() if html.body else "")
+    data_as_of = as_of_match.group(1) if as_of_match else None
 
-        # ── Management block (Boshqaruv ma'lumotlari) ────────────────────────
-        director = None
-        for card in html.css("div.card-body"):
-            h2 = card.css_first("h2.h5")
-            if h2 and "Boshqaruv" in h2.text():
-                # The value column of the "Rahbar" row
-                for row in card.css("div.row"):
-                    label_el = row.css_first("div.col-6.text-body-tertiary span")
-                    if label_el and "Rahbar" in label_el.text():
-                        val_el = row.css_first("div.col-6:last-child span")
-                        if val_el:
-                            director = val_el.text(strip=True)
-                        break
-                break
+    # ── Founders block (Ta'sischilar) ─────────────────────────────────────
+    founders = []
+    for card in html.css("div.card-body"):
+        h2 = card.css_first("h2.h5")
+        if h2 and "Ta'sischilar" in h2.text():
+            for row in card.css("div.row.py-2"):
+                name_el  = row.css_first("a span")
+                share_el = row.css_first("[itemprop=percentOwnership]")
+                if name_el:
+                    founders.append({
+                        "name":  name_el.text(strip=True),
+                        "share": share_el.attrs.get("content") if share_el else None,
+                    })
+            break
 
-        # ── Founders block (Ta'sischilar) ─────────────────────────────────────
-        founders = []
-        for card in html.css("div.card-body"):
-            h2 = card.css_first("h2.h5")
-            if h2 and "Ta'sischilar" in h2.text():
-                for row in card.css("div.row.py-2"):
-                    name_el  = row.css_first("a span")
-                    share_el = row.css_first("[itemprop=percentOwnership]")
-                    if name_el:
-                        founders.append({
-                            "name":  name_el.text(strip=True),
-                            "share": share_el.attrs.get("content") if share_el else None,
-                        })
-                break
-
-        yield {
-            "tin": self.tin,
-            "name": text("h1[itemprop=name]"),
-            "legal_name": text("[itemprop=legalName]"),
-            "alternate_name": text("[itemprop=alternateName]"),
-            "founding_date": text("[itemprop=foundingDate]"),
-            "status": text("[itemprop=status]"),
-            "registration_authority": row_value("Ro'yxatdan o'tkazuvchi organ"),
-            "thsht": row_value("THSHT"),
-            "dbibt": row_value("DBIBT"),
-            "ifut": row_value("IFUT"),
-            "charter_fund": charter_fund,
-            "email": text("a[itemprop=email]"),
-            "phone": text("a[itemprop=telephone]"),
-            "address": full_address,
-            "director": director,
-            "founders": founders if founders else None,
-        }
+    return {
+        "tin": tin,
+        "name": text("h1[itemprop=name]"),
+        "legal_name": text("[itemprop=legalName]"),
+        "alternate_name": text("[itemprop=alternateName]"),
+        "founding_date": text("[itemprop=foundingDate]"),
+        "status": text("[itemprop=status]"),
+        "registration_authority": row_value("Ro'yxatdan o'tkazuvchi organ"),
+        "thsht": row_value("THSHT"),
+        "dbibt": row_value("DBIBT"),
+        "ifut": row_value("IFUT"),
+        "charter_fund": charter_fund,
+        "email": text("a[itemprop=email]"),
+        "phone": text("a[itemprop=telephone]"),
+        "address": full_address,
+        "director": director,
+        "director_position": director_position,
+        "founders": founders if founders else None,
+        "large_taxpayer": large_taxpayer,
+        "data_as_of": data_as_of,
+        "source_url": source_url,
+    }
