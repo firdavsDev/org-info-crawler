@@ -59,9 +59,9 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild className="h-auto min-h-12">
+            <SidebarMenuButton size="lg" asChild className="h-auto min-h-14 gap-3">
               <Link to="/">
-                <BrandMark className="size-9" />
+                <BrandMark className="size-12" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="font-medium text-balance">{BRAND_NAME}</span>
                   <span className="truncate text-xs text-muted-foreground">{t("app.tagline")}</span>

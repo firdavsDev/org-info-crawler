@@ -47,7 +47,7 @@ export default function LoginPage() {
       </div>
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex flex-col items-center gap-3 text-center font-medium">
-          <BrandMark className="size-20" />
+          <BrandMark className="size-28" />
           <span className="text-lg text-balance">{BRAND_NAME}</span>
         </div>
         <Card>
