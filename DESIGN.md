@@ -183,7 +183,7 @@ In dark mode the inset panel is the darkest layer (oklch(0.145 0 0)), while the 
 
 The shell is the shadcn sidebar-08 inset layout. At md (768px) and up, a 16rem sidebar sits on the shell layer and the content panel is inset by 8px (no left margin), with rounded 14px corners and a soft shadow. The sidebar collapses to an icon rail with Cmd/Ctrl+B. Below md the sidebar becomes a sheet, the panel goes edge to edge, and navigating closes the sheet.
 
-The inset header is 64px tall: sidebar trigger, a 16px vertical separator, and a breadcrumb whose last crumb is the TIN in mono. Content sits in a left-aligned column capped at 64rem (max-w-5xl) with 16px side padding (24px at md) and 40px bottom padding. Page stacks use a 24px gap; the title block uses 6px between headline and description.
+The inset header is 64px tall: sidebar trigger, a 16px vertical separator, and a breadcrumb whose last crumb is the TIN in mono. Content sits in a column centered in the panel (mx-auto) and capped at 64rem (max-w-5xl); the Organizations table page widens the cap to 96rem so its columns have room with 16px side padding (24px at md) and 40px bottom padding. Page stacks use a 24px gap; the title block uses 6px between headline and description.
 
 Record facts use a two-column grid from sm (640px): an 11rem label column and a flexible value column with 24px column gap and 12px row gap. Below sm, each fact stacks label over value. Groups are divided by 20px-margin separators. Card headers and progress bands are separated from content by a bottom hairline rather than space.
 

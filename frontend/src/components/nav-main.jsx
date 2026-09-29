@@ -54,7 +54,12 @@ export function NavMain({
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {item.items?.map((subItem) => (
+                        {item.items?.map((subItem) => subItem.label ? (
+                          // A group label between sub-links, not a link itself
+                          <li key={subItem.label} className="px-2 pt-2 pb-0.5 text-xs font-medium text-sidebar-foreground/70 first:pt-0.5">
+                            {subItem.label}
+                          </li>
+                        ) : (
                           <SidebarMenuSubItem key={subItem.title}>
                             <SidebarMenuSubButton
                               asChild

@@ -4,7 +4,7 @@ import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { AppSidebar } from '@/components/app-sidebar'
 import { LanguageToggle } from '@/components/language-toggle'
 import { ModeToggle } from '@/components/mode-toggle'
-import { SearchHistoryProvider } from '@/components/SearchHistoryProvider.jsx'
+import { RecentOrgsProvider } from '@/components/RecentOrgsProvider.jsx'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 
 const TOGGLE_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B'
 
@@ -35,17 +36,24 @@ function CloseMobileSidebarOnNavigate() {
   return null
 }
 
+// Pages whose breadcrumb is just their own title.
+const SECTION_TITLES = [
+  ['/docs', 'nav.apiDocs'],
+  ['/organizations', 'nav.organizations'],
+]
+
 function PageBreadcrumb() {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const { t } = useI18n()
   const tin = searchParams.get('tin')
 
-  if (pathname.startsWith('/docs') || pathname.startsWith('/organizations')) {
+  const section = SECTION_TITLES.find(([prefix]) => pathname.startsWith(prefix))
+  if (section) {
     return (
       <BreadcrumbList>
         <BreadcrumbItem>
-          <BreadcrumbPage>{t(pathname.startsWith('/docs') ? 'nav.apiDocs' : 'nav.organizations')}</BreadcrumbPage>
+          <BreadcrumbPage>{t(section[1])}</BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     )
@@ -76,9 +84,12 @@ function PageBreadcrumb() {
 
 export default function Layout() {
   const { t } = useI18n()
+  const { pathname } = useLocation()
+  // The organizations table needs room for its columns; other pages keep a readable width.
+  const wide = pathname.startsWith('/organizations')
 
   return (
-    <SearchHistoryProvider>
+    <RecentOrgsProvider>
       <SidebarProvider defaultOpen={readSidebarCookie()}>
         <CloseMobileSidebarOnNavigate />
         <AppSidebar />
@@ -104,12 +115,12 @@ export default function Layout() {
             </div>
           </header>
           <main className="flex flex-1 flex-col px-4 pb-10 md:px-6">
-            <div className="w-full max-w-5xl">
+            <div className={cn('mx-auto w-full', wide ? 'max-w-[96rem]' : 'max-w-5xl')}>
               <Outlet />
             </div>
           </main>
         </SidebarInset>
       </SidebarProvider>
-    </SearchHistoryProvider>
+    </RecentOrgsProvider>
   )
 }

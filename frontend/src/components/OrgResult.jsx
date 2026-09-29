@@ -128,7 +128,7 @@ export function fieldLabel(t, key) {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-function CopyValue({ value, label }) {
+export function CopyValue({ value, label }) {
   const { t } = useI18n()
   const [copied, setCopied] = useState(false)
 

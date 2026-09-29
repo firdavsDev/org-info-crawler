@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowUpRight, Check, Copy, KeyRound, Play } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, Copy, KeyRound, Play } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiFetch, getUsername } from '@/api/client.js'
 import { highlightJson } from '@/components/json-highlight'
-import { useSearchHistory } from '@/components/SearchHistoryProvider.jsx'
+import { useRecentOrgs } from '@/components/RecentOrgsProvider.jsx'
 import { useI18n } from '@/lib/i18n'
 import { API_ORIGIN, SWAGGER_URL } from '@/lib/links.js'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
@@ -29,12 +30,104 @@ const UNAUTHORIZED = {
   body: JSON.stringify({ detail: 'Invalid credentials' }, null, 2),
 }
 
+const META = { request_id: 'abc-130', elapsed_ms: 4 }
+
+const INVALID_TIN = {
+  label: { en: '422 — invalid TIN', uz: '422 — STIR noto‘g‘ri' },
+  body: JSON.stringify({ detail: 'Invalid TIN: must be 9–14 digits.' }, null, 2),
+}
+
+// Failures shared by every /didox/* endpoint.
+const DIDOX_ERRORS = [
+  {
+    label: { en: '502 — Didox error', uz: '502 — Didox xatosi' },
+    body: JSON.stringify({ detail: 'Didox returned an unexpected response.' }, null, 2),
+  },
+  {
+    label: { en: '503 — not configured', uz: '503 — sozlanmagan' },
+    body: JSON.stringify({ detail: 'Didox integration is not configured.' }, null, 2),
+  },
+  {
+    label: { en: '504 — Didox timeout', uz: '504 — Didox javob bermadi' },
+    body: JSON.stringify({ detail: 'Didox did not respond in time.' }, null, 2),
+  },
+  UNAUTHORIZED,
+]
+
+// Sample Didox payloads: real field names and types (September 2026), dummy personal data.
+const DIDOX_ORG_SAMPLE = {
+  ns10Code: 27,
+  ns11Code: 12,
+  shortName: '"EXAMPLE" MCHJ',
+  tin: '304918546',
+  name: '"EXAMPLE" MAS\'ULIYATI CHEKLANGAN JAMIYAT',
+  regDate: '30.05.2017',
+  na1Code: 12,
+  na1Name: 'Общество с огр. ответствен.',
+  statusCode: 0,
+  statusName: 'Действующие и имеющие налоговые обязательства',
+  mfo: '00475',
+  account: '20208000000000000001',
+  address: 'Example MFY, Example ko‘chasi, 1-uy',
+  oked: '10310',
+  directorTin: '500000000',
+  directorPinfl: '30000000000000',
+  director: 'JOHN DOE',
+  accountant: 'JANE DOE',
+  isBudget: 0,
+  taxpayerType: 1,
+  isItd: false,
+  personalNum: null,
+  selfEmployment: false,
+  privateNotary: false,
+  peasantFarm: false,
+  VATRegCode: '300000000000',
+  VATRegStatus: 20,
+  VATRegStatusCode: '1110',
+  VATRegSimplified: false,
+  bankAccount: '20208000000000000001',
+  bankCode: '00475',
+  shortname: '"EXAMPLE" MCHJ',
+  fullname: '"EXAMPLE" MAS\'ULIYATI CHEKLANGAN JAMIYAT',
+  fullName: '"EXAMPLE" MAS\'ULIYATI CHEKLANGAN JAMIYAT',
+}
+
+const DIDOX_BANK_NAME = 'НУРАФШОН Ш., "АГРОБАНК" АТБ ТОШКЕНТ ВИЛОЯТ ХУДУДИЙ ФИЛИАЛИ'
+
+const DIDOX_REGION_SAMPLE = {
+  code: 1703,
+  name: 'Andijan region',
+  nameUzCyrl: 'Андижон вилояти',
+  nameUzLatn: 'Andijon viloyati',
+  nameRu: 'Андижанская область',
+  regionId: 3,
+  districtCode: 0,
+  active: 1,
+}
+
+const DIDOX_DISTRICT_SAMPLE = {
+  soato: 1703202,
+  name: 'Altynkul district',
+  nameUzCyrl: 'Олтинкўл тумани',
+  nameUzLatn: 'Oltinko\'l tumani',
+  nameRu: 'Алтынкульский район',
+  regionId: 3,
+  districtCode: 6,
+  active: 1,
+}
+
+// Mirrors the Swagger tags, so the same grouping shows up in /docs and here.
+const GROUPS = [
+  { id: 'org-info', key: 'orgInfo' },
+  { id: 'didox', key: 'didox' },
+]
+
 const ENDPOINTS = [
   {
     id: 'get-org',
+    group: 'org-info',
     method: 'GET',
     path: '/org/{tin}',
-    logsHistory: true,
     description: {
       en:
         'Look up an organization by its Tax Identification Number (TIN/INN). ' +
@@ -62,10 +155,7 @@ const ENDPOINTS = [
         body: JSON.stringify({ status: 'failed', error: 'Crawler returned no data.', _meta: { request_id: 'abc-125', elapsed_ms: 12 } }, null, 2),
       },
       UNAUTHORIZED,
-      {
-        label: { en: '422 — invalid TIN', uz: '422 — STIR noto‘g‘ri' },
-        body: JSON.stringify({ detail: 'Invalid TIN: must be 9–14 digits.' }, null, 2),
-      },
+      INVALID_TIN,
     ],
     curl: `curl -u staff_user:password \\
   ${API_ORIGIN}/org/304918546`,
@@ -77,6 +167,7 @@ console.log(data.status, data.data);`,
   },
   {
     id: 'get-org-status',
+    group: 'org-info',
     method: 'GET',
     path: '/org/{tin}/status',
     description: {
@@ -114,6 +205,7 @@ const { status } = await res.json();
   },
   {
     id: 'get-orgs',
+    group: 'org-info',
     method: 'GET',
     path: '/orgs',
     description: {
@@ -157,7 +249,133 @@ const res = await fetch('/api/orgs?' + params, {
 const { items, total } = await res.json();`,
   },
   {
+    id: 'get-didox-org',
+    group: 'didox',
+    method: 'GET',
+    path: '/didox/org/{tin}',
+    description: {
+      en:
+        'Organization details from Didox by TIN (INN) or PINFL, with the name of its bank. ' +
+        'Answers immediately — no crawl and no polling — and is cached for a day. ' +
+        '"data" is the Didox record, unchanged; "bank_name" is looked up in the Didox bank list.',
+      uz:
+        'Didox’dan STIR (INN) yoki JShShIR bo‘yicha tashkilot ma’lumotlari va uning banki nomi. ' +
+        'Javob darhol qaytadi — yig‘ish ham, holatni so‘rab turish ham kerak emas — va bir kunga keshlanadi. ' +
+        '"data" — Didox yozuvi o‘zgarishsiz; "bank_name" Didox banklar ro‘yxatidan olinadi.',
+    },
+    params: [
+      {
+        name: 'tin',
+        in: 'path',
+        required: true,
+        description: { en: '9–14 digits: a TIN (INN) or a PINFL.', uz: '9–14 xonali raqam: STIR (INN) yoki JShShIR.' },
+      },
+    ],
+    responses: [
+      {
+        label: { en: '200 — success', uz: '200 — muvaffaqiyatli' },
+        body: JSON.stringify({ data: DIDOX_ORG_SAMPLE, bank_name: DIDOX_BANK_NAME, _meta: META }, null, 2),
+      },
+      {
+        label: { en: '404 — not in Didox', uz: '404 — Didox’da yo‘q' },
+        body: JSON.stringify({ detail: 'Organization not found in Didox.' }, null, 2),
+      },
+      INVALID_TIN,
+      ...DIDOX_ERRORS,
+    ],
+    curl: `curl -u staff_user:password \\
+  ${API_ORIGIN}/didox/org/304918546`,
+    fetchExample: `const res = await fetch('/api/didox/org/304918546', {
+  headers: { Authorization: 'Basic ' + btoa('staff_user:password') },
+});
+const { data, bank_name } = await res.json();`,
+  },
+  {
+    id: 'get-didox-banks',
+    group: 'didox',
+    method: 'GET',
+    path: '/didox/banks',
+    description: {
+      en: 'All banks known to Didox (about 2,000). "bankId" is the bank’s MFO code — the same value as "bankCode" in /didox/org/{tin}. Cached for 7 days.',
+      uz: 'Didox’dagi barcha banklar ro‘yxati (2 000 ga yaqin). "bankId" — bankning MFO kodi, /didox/org/{tin} dagi "bankCode" bilan bir xil. 7 kunga keshlanadi.',
+    },
+    params: [],
+    responses: [
+      {
+        label: { en: '200 — success', uz: '200 — muvaffaqiyatli' },
+        body: JSON.stringify({ data: [{ bankId: '00475', name: DIDOX_BANK_NAME }], _meta: META }, null, 2),
+      },
+      ...DIDOX_ERRORS,
+    ],
+    curl: `curl -u staff_user:password \\
+  ${API_ORIGIN}/didox/banks`,
+    fetchExample: `const res = await fetch('/api/didox/banks', {
+  headers: { Authorization: 'Basic ' + btoa('staff_user:password') },
+});
+const { data: banks } = await res.json();`,
+  },
+  {
+    id: 'get-didox-regions',
+    group: 'didox',
+    method: 'GET',
+    path: '/didox/regions',
+    description: {
+      en: 'Regions from the Didox waybill directory, named in English, Uzbek (Latin and Cyrillic) and Russian. Pass a region’s "regionId" to /didox/regions/{region_id}/districts. Cached for 7 days.',
+      uz: 'Didox yuk xatlari (TTN) ma’lumotnomasidagi viloyatlar: ingliz, o‘zbek (lotin va kirill) va rus tilidagi nomlari bilan. Viloyatning "regionId" qiymatini /didox/regions/{region_id}/districts ga bering. 7 kunga keshlanadi.',
+    },
+    params: [],
+    responses: [
+      {
+        label: { en: '200 — success', uz: '200 — muvaffaqiyatli' },
+        body: JSON.stringify({ data: [DIDOX_REGION_SAMPLE], _meta: META }, null, 2),
+      },
+      ...DIDOX_ERRORS,
+    ],
+    curl: `curl -u staff_user:password \\
+  ${API_ORIGIN}/didox/regions`,
+    fetchExample: `const res = await fetch('/api/didox/regions', {
+  headers: { Authorization: 'Basic ' + btoa('staff_user:password') },
+});
+const { data: regions } = await res.json();`,
+  },
+  {
+    id: 'get-didox-districts',
+    group: 'didox',
+    method: 'GET',
+    path: '/didox/regions/{region_id}/districts',
+    description: {
+      en: 'Districts of one region from the Didox waybill directory. An unknown region returns an empty list. Cached for 7 days.',
+      uz: 'Didox yuk xatlari (TTN) ma’lumotnomasidan bitta viloyatning tumanlari. Noma’lum viloyat uchun bo‘sh ro‘yxat qaytadi. 7 kunga keshlanadi.',
+    },
+    params: [
+      {
+        name: 'region_id',
+        in: 'path',
+        required: true,
+        description: { en: '"regionId" from /didox/regions (for example 3).', uz: '/didox/regions dagi "regionId" (masalan, 3).' },
+      },
+    ],
+    responses: [
+      {
+        label: { en: '200 — success', uz: '200 — muvaffaqiyatli' },
+        body: JSON.stringify({ data: [DIDOX_DISTRICT_SAMPLE], _meta: META }, null, 2),
+      },
+      {
+        label: { en: '422 — invalid region_id', uz: '422 — region_id noto‘g‘ri' },
+        body: JSON.stringify({ detail: [{ type: 'int_parsing', loc: ['path', 'region_id'], msg: 'Input should be a valid integer, unable to parse string as an integer', input: 'abc' }] }, null, 2),
+      },
+      ...DIDOX_ERRORS,
+    ],
+    curl: `curl -u staff_user:password \\
+  ${API_ORIGIN}/didox/regions/1/districts`,
+    fetchExample: `const res = await fetch('/api/didox/regions/1/districts', {
+  headers: { Authorization: 'Basic ' + btoa('staff_user:password') },
+});
+const { data: districts } = await res.json();`,
+  },
+  {
     id: 'get-auth-me',
+    group: 'org-info',
     method: 'GET',
     path: '/auth/me',
     description: {
@@ -182,24 +400,41 @@ const { username } = await res.json();`,
 ]
 
 export default function ApiDocsPage() {
-  const { hash } = useLocation()
+  const { hash, key: locationKey } = useLocation()
   const { t } = useI18n()
-  const { history } = useSearchHistory()
+  const { recent } = useRecentOrgs()
+  // Cards start collapsed; the one a link points at (#get-org, …) opens.
+  const [openIds, setOpenIds] = useState(() => new Set(hash ? [hash.slice(1)] : []))
   // Param values are shared across cards, so a TIN typed once can be sent to /org/{tin} and then /status.
-  const [values, setValues] = useState({ tin: '', q: '', status: '', page: '1', page_size: '20' })
+  const [values, setValues] = useState({ tin: '', q: '', status: '', page: '1', page_size: '20', region_id: '' })
   const [tinTouched, setTinTouched] = useState(false)
 
   useEffect(() => {
-    if (!tinTouched && history[0]?.tin) setValues((v) => ({ ...v, tin: history[0].tin }))
-  }, [history, tinTouched])
+    if (!tinTouched && recent[0]?.tin) setValues((v) => ({ ...v, tin: recent[0].tin }))
+  }, [recent, tinTouched])
 
+  // Keyed on the location too, so clicking the same sidebar link again reopens and scrolls.
   useEffect(() => {
     if (!hash) return
-    const el = document.getElementById(hash.slice(1))
-    if (!el) return
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
-  }, [hash])
+    const id = hash.slice(1)
+    setOpenIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+    const frame = requestAnimationFrame(() => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hash, locationKey])
+
+  function setOpen(id, open) {
+    setOpenIds((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
 
   function setValue(name, value) {
     if (name === 'tin') setTinTouched(true)
@@ -230,111 +465,148 @@ export default function ApiDocsPage() {
         </AlertDescription>
       </Alert>
 
-      {ENDPOINTS.map((ep) => (
-        <EndpointCard key={ep.path} ep={ep} values={values} onValueChange={setValue} />
+      {GROUPS.map((group) => (
+        <section
+          key={group.id}
+          id={group.id}
+          aria-labelledby={`${group.id}-heading`}
+          className="mt-4 flex scroll-mt-20 flex-col gap-6">
+          <div className="flex flex-col gap-1.5">
+            <h2 id={`${group.id}-heading`} className="flex items-center gap-2.5 text-lg font-semibold">
+              {t(`docs.groups.${group.key}.title`)}
+              <Badge variant="outline" className="font-mono font-normal">{group.id}</Badge>
+            </h2>
+            <p className="max-w-prose text-sm text-muted-foreground">{t(`docs.groups.${group.key}.description`)}</p>
+          </div>
+          {ENDPOINTS.filter((ep) => ep.group === group.id).map((ep) => (
+            <EndpointCard
+              key={ep.path}
+              ep={ep}
+              values={values}
+              onValueChange={setValue}
+              open={openIds.has(ep.id)}
+              onOpenChange={(open) => setOpen(ep.id, open)}
+            />
+          ))}
+        </section>
       ))}
     </div>
   )
 }
 
-function EndpointCard({ ep, values, onValueChange }) {
+function EndpointCard({ ep, values, onValueChange, open, onOpenChange }) {
   const { t, pick } = useI18n()
 
   return (
     <section id={ep.id} aria-labelledby={`${ep.id}-title`} className="scroll-mt-20">
-      <Card className="gap-0 overflow-hidden py-0">
-        <CardHeader className="border-b py-5 [.border-b]:pb-5">
-          <CardTitle id={`${ep.id}-title`} className="flex items-center gap-2.5">
-            <Badge className="rounded-md font-mono">{ep.method}</Badge>
-            <code className="font-mono text-base font-medium break-all">{ep.path}</code>
-          </CardTitle>
-          <CardDescription className="max-w-prose leading-relaxed">{pick(ep.description)}</CardDescription>
-        </CardHeader>
+      <Collapsible open={open} onOpenChange={onOpenChange} asChild>
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardHeader className={cn('py-5', open && 'border-b [.border-b]:pb-5')}>
+            <CardTitle id={`${ep.id}-title`} className="flex items-center gap-2.5">
+              <Badge className="rounded-md font-mono">{ep.method}</Badge>
+              <code className="font-mono text-base font-medium break-all">{ep.path}</code>
+            </CardTitle>
+            <CardDescription className="max-w-prose leading-relaxed">{pick(ep.description)}</CardDescription>
+            <CardAction>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={t(open ? 'docs.collapse' : 'docs.expand', { path: ep.path })}>
+                  <ChevronDown className={cn('transition-transform duration-200 motion-reduce:transition-none', open && 'rotate-180')} />
+                </Button>
+              </CollapsibleTrigger>
+            </CardAction>
+          </CardHeader>
 
-        <CardContent className="flex flex-col gap-6 py-6">
-          {ep.params.length > 0 && (
-            <DocSection title={t('docs.parameters')}>
-              <dl className="flex flex-col divide-y rounded-md border text-sm sm:hidden">
-                {ep.params.map((p) => (
-                  <div key={p.name} className="flex flex-col gap-1.5 p-3">
-                    <dt className="flex items-center gap-2">
-                      <span className="font-mono">{p.name}</span>
-                      <span className="text-muted-foreground">{p.in}</span>
-                      {p.required && <Badge variant="secondary">{t('docs.required')}</Badge>}
-                    </dt>
-                    <dd>{pick(p.description)}</dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="hidden overflow-hidden rounded-md border sm:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      {['name', 'in', 'required', 'description'].map((h) => (
-                        <TableHead key={h} className="h-9">{t(`docs.columns.${h}`)}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+          <CollapsibleContent>
+            <CardContent className="flex flex-col gap-6 py-6">
+              {ep.params.length > 0 && (
+                <DocSection title={t('docs.parameters')}>
+                  <dl className="flex flex-col divide-y rounded-md border text-sm sm:hidden">
                     {ep.params.map((p) => (
-                      <TableRow key={p.name}>
-                        <TableCell className="font-mono">{p.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{p.in}</TableCell>
-                        <TableCell>
-                          {p.required ? <Badge variant="secondary">{t('docs.required')}</Badge> : <span className="text-muted-foreground">{t('docs.optional')}</span>}
-                        </TableCell>
-                        <TableCell className="min-w-56 whitespace-normal">{pick(p.description)}</TableCell>
-                      </TableRow>
+                      <div key={p.name} className="flex flex-col gap-1.5 p-3">
+                        <dt className="flex items-center gap-2">
+                          <span className="font-mono">{p.name}</span>
+                          <span className="text-muted-foreground">{p.in}</span>
+                          {p.required && <Badge variant="secondary">{t('docs.required')}</Badge>}
+                        </dt>
+                        <dd>{pick(p.description)}</dd>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </DocSection>
-          )}
+                  </dl>
+                  <div className="hidden overflow-hidden rounded-md border sm:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                          {['name', 'in', 'required', 'description'].map((h) => (
+                            <TableHead key={h} className="h-9">{t(`docs.columns.${h}`)}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ep.params.map((p) => (
+                          <TableRow key={p.name}>
+                            <TableCell className="font-mono">{p.name}</TableCell>
+                            <TableCell className="text-muted-foreground">{p.in}</TableCell>
+                            <TableCell>
+                              {p.required ? <Badge variant="secondary">{t('docs.required')}</Badge> : <span className="text-muted-foreground">{t('docs.optional')}</span>}
+                            </TableCell>
+                            <TableCell className="min-w-56 whitespace-normal">{pick(p.description)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DocSection>
+              )}
 
-          <DocSection title={t('tryIt.title')}>
-            <TryIt ep={ep} values={values} onValueChange={onValueChange} />
-          </DocSection>
+              <DocSection title={t('tryIt.title')}>
+                <TryIt ep={ep} values={values} onValueChange={onValueChange} />
+              </DocSection>
 
-          <DocSection title={t('docs.responses')}>
-            <Tabs defaultValue="0">
-              <div>
-                <TabsList className="h-auto flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto">
-                  {ep.responses.map((r, i) => {
-                    const [code, rest = ''] = pick(r.label).split(' — ')
-                    return (
-                      <TabsTrigger key={i} value={String(i)} className="h-8 flex-none gap-1.5">
-                        <span className="font-mono tabular-nums">{code}</span>
-                        <span className="text-muted-foreground">{rest.replace(/\s*\(.*\)$/, '')}</span>
-                      </TabsTrigger>
-                    )
-                  })}
-                </TabsList>
-              </div>
-              {ep.responses.map((r, i) => (
-                <TabsContent key={i} value={String(i)}>
-                  <CodeBlock label={pick(r.label)} code={r.body} language="json" />
-                </TabsContent>
-              ))}
-            </Tabs>
-          </DocSection>
+              <DocSection title={t('docs.responses')}>
+                <Tabs defaultValue="0">
+                  <div>
+                    <TabsList className="h-auto flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto">
+                      {ep.responses.map((r, i) => {
+                        const [code, rest = ''] = pick(r.label).split(' — ')
+                        return (
+                          <TabsTrigger key={i} value={String(i)} className="h-8 flex-none gap-1.5">
+                            <span className="font-mono tabular-nums">{code}</span>
+                            <span className="text-muted-foreground">{rest.replace(/\s*\(.*\)$/, '')}</span>
+                          </TabsTrigger>
+                        )
+                      })}
+                    </TabsList>
+                  </div>
+                  {ep.responses.map((r, i) => (
+                    <TabsContent key={i} value={String(i)}>
+                      <CodeBlock label={pick(r.label)} code={r.body} language="json" />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </DocSection>
 
-          <DocSection title={t('docs.examples')}>
-            <Tabs defaultValue="curl">
-              <TabsList>
-                <TabsTrigger value="curl">curl</TabsTrigger>
-                <TabsTrigger value="fetch">JavaScript (fetch)</TabsTrigger>
-              </TabsList>
-              <TabsContent value="curl">
-                <CodeBlock label="Shell" code={ep.curl} />
-              </TabsContent>
-              <TabsContent value="fetch">
-                <CodeBlock label="JavaScript" code={ep.fetchExample} />
-              </TabsContent>
-            </Tabs>
-          </DocSection>
-        </CardContent>
-      </Card>
+              <DocSection title={t('docs.examples')}>
+                <Tabs defaultValue="curl">
+                  <TabsList>
+                    <TabsTrigger value="curl">curl</TabsTrigger>
+                    <TabsTrigger value="fetch">JavaScript (fetch)</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="curl">
+                    <CodeBlock label="Shell" code={ep.curl} />
+                  </TabsContent>
+                  <TabsContent value="fetch">
+                    <CodeBlock label="JavaScript" code={ep.fetchExample} />
+                  </TabsContent>
+                </Tabs>
+              </DocSection>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </section>
   )
 }
@@ -353,7 +625,6 @@ function buildRequestPath(ep, values) {
 
 function TryIt({ ep, values, onValueChange }) {
   const { t } = useI18n()
-  const { refresh: refreshHistory } = useSearchHistory()
   const [state, setState] = useState({ status: 'idle' })
 
   const path = buildRequestPath(ep, values)
@@ -385,7 +656,6 @@ function TryIt({ ep, values, onValueChange }) {
         body,
         isJson,
       })
-      if (ep.logsHistory) refreshHistory()
     } catch (err) {
       setState({ status: 'error', message: err.message })
     }
@@ -426,7 +696,6 @@ function TryIt({ ep, values, onValueChange }) {
         </div>
         <p className="text-xs text-muted-foreground">
           {t('tryIt.runsAs', { user: getUsername() })}
-          {ep.logsHistory && <> {t('tryIt.logsHistory')}</>}
         </p>
       </form>
 

@@ -15,11 +15,16 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
     # Number of crawler jobs the worker processes concurrently
     WORKER_CONCURRENCY: int = 4
-    # How many recent searches to return per user
-    SEARCH_HISTORY_LIMIT: int = 20
     # Dead-letter queue: topic name and max crawl attempts before DLQ
     KAFKA_DLQ_TOPIC: str = "org_jobs_dlq"
     WORKER_MAX_RETRIES: int = 3
+    # Didox partner API (empty = integration disabled, /didox/* returns 503)
+    DIDOX_BASE_URL: str = ""
+    PARTNER_AUTHORIZATION: str = ""
+    DIDOX_TIMEOUT_SECONDS: float = 10
+    # Redis TTLs for Didox answers: org info, and banks/regions/districts
+    DIDOX_INFO_TTL_SECONDS: int = 86_400
+    DIDOX_REFERENCE_TTL_SECONDS: int = 604_800
 
 
 settings = Settings()

@@ -21,7 +21,11 @@ The service turns a slow, manual website lookup into a cached, authenticated int
 ## Operating Context
 
 - Lookup flow: enter a 9–14 digit TIN. A cache hit returns immediately. A miss queues a Kafka job, and the UI polls `/org/{tin}/status` every 2 s for up to 60 s through queued → processing → ready | failed | not_found.
-- Each user has their own search history (`/search/history`), which drives repeat lookups.
+- The lookup page shows the most recently crawled TINs (from `/orgs`) as one-click repeat lookups.
+- One search fills result tabs:
+  - Registry (orginfo.uz, crawled);
+  - Didox (instant, from `/didox/org/{tin}`);
+  - Directory (Didox banks, regions and districts; no TIN needed).
 - Results export to Excel (`org_<tin>.xlsx`). Founder names link to orginfo.uz founder search.
 - Developers read the API Docs page (endpoints, curl and fetch examples, sample responses) and the Swagger UI at `/docs`.
 

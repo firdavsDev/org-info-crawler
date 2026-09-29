@@ -23,6 +23,9 @@ services:
       ORGINFO_BASE_SEARCH_URL: https://orginfo.uz/uz/search/organizations/
       CRAWLER_TIMEOUT_SECONDS: 30
       REDIS_URL: redis://redis:6379/0
+      # Didox partner API — set real values in the root .env, never here
+      DIDOX_BASE_URL: ${DIDOX_BASE_URL:-}
+      PARTNER_AUTHORIZATION: ${PARTNER_AUTHORIZATION:-}
 
   worker:
     build: .

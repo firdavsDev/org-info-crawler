@@ -46,10 +46,16 @@ export function AppSidebar({
       url: "/docs",
       icon: BookOpen,
       items: [
+        { label: t("docs.groups.orgInfo.title") },
         { title: "GET /org/{tin}", url: "/docs#get-org" },
         { title: "GET /org/{tin}/status", url: "/docs#get-org-status" },
         { title: "GET /orgs", url: "/docs#get-orgs" },
         { title: "GET /auth/me", url: "/docs#get-auth-me" },
+        { label: t("docs.groups.didox.title") },
+        { title: "GET /didox/org/{tin}", url: "/docs#get-didox-org" },
+        { title: "GET /didox/banks", url: "/docs#get-didox-banks" },
+        { title: "GET /didox/regions", url: "/docs#get-didox-regions" },
+        { title: "GET /didox/regions/{region_id}/districts", url: "/docs#get-didox-districts" },
       ],
     },
   ]

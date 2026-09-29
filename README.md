@@ -12,7 +12,7 @@ Browser (React SPA :3000)
        ↓  HTTP Basic Auth
    Nginx (proxies /api/ → FastAPI :8000)
        ↓
-   FastAPI API
+   FastAPI API ──── /didox/* ──→ Didox partner API (Redis-cached)
        ↓
   Kafka queue → Worker → Scrapy → orginfo.uz
        ↓
@@ -118,12 +118,19 @@ dashboard automatically after a successful login.
 4. If a crawl is needed, the page polls every 2 seconds (up to 60 s) and updates
    automatically when the result arrives.
 5. Status badges indicate: **Queued → Processing → Ready / Failed**.
+6. Results are split into tabs, and each search fills the first two at once:
+   - **Registry (orginfo.uz)**: the crawled record described above.
+   - **Didox**: the Didox record. It answers instantly, even while the crawl is still running.
+   - **Directory**: the Didox bank list and the region → district picker. It needs no TIN.
+
+   Each tab shows its own status dot.
 
 ### API Docs
 
 Click **API Docs** in the sidebar to see (its endpoints are also listed under it for direct jumps):
 
-- All available endpoints with parameter descriptions
+- All available endpoints, grouped into Organization registry and Didox (the same grouping as the Swagger tags). Each endpoint card collapses; opening a card from the sidebar expands it.
+- Parameter descriptions for each endpoint
 - Example `curl` and JavaScript `fetch` requests
 - Example JSON responses for each status
 - A link to the interactive **Swagger UI** (`/docs`) for developers
@@ -177,6 +184,42 @@ curl -u admin:password http://localhost:8000/org/INVALID
 
 **Failed-job retry:** if a crawl fails, calling `GET /org/{tin}` again automatically re-queues it.
 
+### Didox endpoints
+
+The service proxies the Didox partner API. Other teams can then get Didox data with
+their own Basic Auth account, without holding the Didox partner token. An admin creates
+the accounts with `python manage.py createuser`. Use one account per consuming project,
+so access can be revoked per project.
+
+Unlike `/org/{tin}`, these calls are synchronous: they go straight to Didox (no Kafka),
+and answers are cached in Redis. Org info is cached for 1 day, and banks, regions and
+districts for 7 days. Errors and empty answers are never cached.
+
+| Endpoint                                | Returns                                                    |
+|-----------------------------------------|------------------------------------------------------------|
+| `GET /didox/org/{tin}`                  | Didox record for a TIN/INN or PINFL, plus `bank_name`      |
+| `GET /didox/banks`                      | All banks                                                  |
+| `GET /didox/regions`                    | Waybill regions                                            |
+| `GET /didox/regions/{region_id}/districts` | Waybill districts of one region                         |
+
+```bash
+curl -u admin:password http://localhost:8000/didox/org/304918546
+# {"data":{...Didox record, unchanged...},"bank_name":"...","_meta":{...}}
+
+curl -u admin:password http://localhost:8000/didox/regions
+# {"data":[...],"_meta":{...}}
+```
+
+`data` is the Didox response passed through unchanged. Errors use the same `{"detail": ...}` shape:
+
+| Status | When                                                              |
+|--------|-------------------------------------------------------------------|
+| `404`  | Didox has no record for this TIN                                  |
+| `422`  | TIN is not 9–14 digits, or `region_id` is not an integer         |
+| `502`  | Didox returned an error or an unreadable response                 |
+| `503`  | `DIDOX_BASE_URL` / `PARTNER_AUTHORIZATION` are not set            |
+| `504`  | Didox did not answer within `DIDOX_TIMEOUT_SECONDS`               |
+
 ---
 
 ## Development commands
@@ -223,6 +266,13 @@ After changing `API_PORT` or `FRONTEND_PORT`, run `docker compose up -d --build 
 | `ORGINFO_BASE_SEARCH_URL`   | `https://orginfo.uz/uz/search/organizations/` | Crawler target                               |
 | `CRAWLER_TIMEOUT_SECONDS`   | `30`                                         | Per-job crawl timeout                         |
 | `CACHE_TTL_DAYS`            | `30`                                         | Re-crawl records older than N days (0 = never)|
+| `DIDOX_BASE_URL`            | *(empty)*                                    | Didox partner API base URL; set it in `.env`  |
+| `PARTNER_AUTHORIZATION`     | *(empty)*                                    | Didox partner token; set it in `.env`, never commit it |
+| `DIDOX_TIMEOUT_SECONDS`     | `10`                                         | Per-request timeout for Didox calls           |
+| `DIDOX_INFO_TTL_SECONDS`    | `86400`                                      | Redis TTL for `/didox/org/{tin}` answers      |
+| `DIDOX_REFERENCE_TTL_SECONDS` | `604800`                                   | Redis TTL for banks, regions and districts    |
+
+After changing the Didox values in `.env`, run `docker compose up -d api`. `restart` does not pick up new env values.
 
 ---
 
